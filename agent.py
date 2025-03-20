@@ -32,7 +32,7 @@ def loop():
 
         if keyboard.is_pressed('z') == keyboard.is_pressed('s'):
             speed = 0
-        
+
         if keyboard.is_pressed('d') == keyboard.is_pressed('q'):
             steering = 0
 
@@ -47,7 +47,7 @@ def loop():
 
         if keyboard.is_pressed('q'):
             steering = max(steering - 0.1, -0.3)
-        
+
         send(s, f'SET_SPEED:{speed}')
         send(s, f'SET_STEERING:{steering}')
 
