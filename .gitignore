@@ -3,6 +3,8 @@ RacingSimulatorLinux/
 .venv
 docs
 data
+__pycache__
+.vscode
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
