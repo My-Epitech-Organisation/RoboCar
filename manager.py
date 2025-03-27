@@ -10,6 +10,7 @@ Script qui gère:
 import os
 import subprocess
 import sys
+import platform
 
 def check_and_setup_venv():
     """
@@ -18,6 +19,11 @@ def check_and_setup_venv():
     """
     venv_dir = ".venv"
     
+    # Déterminer le séparateur et les chemins selon l'OS
+    is_windows = platform.system() == "Windows"
+    activate_path = os.path.join(venv_dir, "Scripts", "activate") if is_windows else os.path.join(venv_dir, "bin", "activate")
+    activate_cmd = f"call {activate_path}" if is_windows else f"source {activate_path}"
+
     # 1) Vérifier si .venv existe déjà
     if not os.path.isdir(venv_dir):
         print("[INFO] Environnement virtuel (.venv) introuvable, création en cours...")
@@ -28,13 +34,9 @@ def check_and_setup_venv():
 
     # 2) Installation / mise à jour des dépendances
     print("[INFO] Installation / Mise à jour des dépendances...")
-    # Sur Linux/Mac, l'exécutable Python du venv est dans .venv/bin/python
-    venv_python = os.path.join(venv_dir, "bin", "python")
-    
-    # Sous Windows, remplacer la ligne ci-dessus par:
-    # venv_python = os.path.join(venv_dir, "Scripts", "python.exe")
-
-    subprocess.run([venv_python, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
+    # Utilisation de l'activation du venv
+    cmd = f"{activate_cmd} && pip install -r requirements.txt"
+    subprocess.run(cmd, shell=True, check=True)
     print("[INFO] Les dépendances sont installées / à jour.")
 
 def launch_collect_data():
@@ -42,25 +44,36 @@ def launch_collect_data():
     Lance le script de collecte de données depuis le venv.
     """
     print("[INFO] Lancement de la collecte de données...")
-    venv_python = os.path.join(".venv", "bin", "python")
-    # (Sous Windows, adapter le chemin.)
-    subprocess.run([venv_python, "src/collector/collect_data.py"], check=True)
+    is_windows = platform.system() == "Windows"
+    activate_path = os.path.join(".venv", "Scripts", "activate") if is_windows else os.path.join(".venv", "bin", "activate")
+    activate_cmd = f"call {activate_path}" if is_windows else f"source {activate_path}"
+    
+    cmd = f"{activate_cmd} && python src/collector/collect_data.py"
+    subprocess.run(cmd, shell=True, check=True)
 
 def launch_training():
     """
     Lance le script d'entraînement depuis le venv.
     """
     print("[INFO] Lancement de l'entraînement...")
-    venv_python = os.path.join(".venv", "bin", "python")
-    subprocess.run([venv_python, "src/model/train.py"], check=True)
+    is_windows = platform.system() == "Windows"
+    activate_path = os.path.join(".venv", "Scripts", "activate") if is_windows else os.path.join(".venv", "bin", "activate")
+    activate_cmd = f"call {activate_path}" if is_windows else f"source {activate_path}"
+    
+    cmd = f"{activate_cmd} && python src/model/train.py"
+    subprocess.run(cmd, shell=True, check=True)
 
 def launch_inference():
     """
     Lance le script d'inférence depuis le venv.
     """
     print("[INFO] Lancement de l'inférence...")
-    venv_python = os.path.join(".venv", "bin", "python")
-    subprocess.run([venv_python, "src/inference/run_model.py"], check=True)
+    is_windows = platform.system() == "Windows"
+    activate_path = os.path.join(".venv", "Scripts", "activate") if is_windows else os.path.join(".venv", "bin", "activate")
+    activate_cmd = f"call {activate_path}" if is_windows else f"source {activate_path}"
+    
+    cmd = f"{activate_cmd} && python src/inference/run_model.py"
+    subprocess.run(cmd, shell=True, check=True)
 
 def main_menu():
     """
