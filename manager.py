@@ -12,12 +12,49 @@ import subprocess
 import sys
 import platform
 
+def check_python_version():
+    """
+    Vérifie si Python 3.10.12 est disponible sur le système.
+    Retourne le chemin vers l'exécutable Python 3.10.12 s'il est disponible.
+    """
+    try:
+        # Vérifie si python3.10 est disponible
+        result = subprocess.run(
+            ["python3.10", "--version"], 
+            capture_output=True, 
+            text=True, 
+            check=False
+        )
+        if result.returncode == 0 and "3.10" in result.stdout:
+            # Vérifie si c'est exactement 3.10.12
+            if "3.10.12" in result.stdout:
+                print("[INFO] Python 3.10.12 trouvé.")
+                return "python3.10"
+            else:
+                print(f"[ATTENTION] Python 3.10 trouvé mais pas exactement 3.10.12 ({result.stdout.strip()})")
+                choice = input("Continuer avec cette version ? (o/n): ").lower()
+                if choice == 'o':
+                    return "python3.10"
+                else:
+                    print("[ERREUR] Python 3.10.12 requis pour continuer.")
+                    sys.exit(1)
+        else:
+            print("[ERREUR] Python 3.10 n'est pas disponible sur ce système.")
+            print("Veuillez installer Python 3.10.12 avant de continuer.")
+            sys.exit(1)
+    except Exception as e:
+        print(f"[ERREUR] Lors de la vérification de Python: {e}")
+        sys.exit(1)
+
 def check_and_setup_venv():
     """
     Vérifie si le dossier .venv existe.
     Si non, le crée et installe les dépendances via requirements.txt.
     """
     venv_dir = ".venv"
+    
+    # Obtenir l'exécutable Python 3.10.12
+    python_exec = check_python_version()
     
     # Déterminer le séparateur et les chemins selon l'OS
     is_windows = platform.system() == "Windows"
@@ -27,10 +64,24 @@ def check_and_setup_venv():
     # 1) Vérifier si .venv existe déjà
     if not os.path.isdir(venv_dir):
         print("[INFO] Environnement virtuel (.venv) introuvable, création en cours...")
-        # Création de l'environnement virtuel
-        subprocess.run([sys.executable, "-m", "venv", venv_dir], check=True)
+        # Création de l'environnement virtuel avec Python 3.10.12
+        subprocess.run([python_exec, "-m", "venv", venv_dir], check=True)
     else:
         print("[INFO] Environnement virtuel déjà présent.")
+        print("[INFO] Vérification de la version Python dans l'environnement...")
+        # Vérifier la version Python dans le venv existant
+        py_path = os.path.join(venv_dir, "bin", "python") if not is_windows else os.path.join(venv_dir, "Scripts", "python.exe")
+        if os.path.exists(py_path):
+            result = subprocess.run([py_path, "--version"], capture_output=True, text=True, check=False)
+            if "3.10" not in result.stdout:
+                print(f"[ATTENTION] Version Python incorrecte dans le venv: {result.stdout.strip()}")
+                choice = input("Recréer l'environnement avec Python 3.10.12 ? (o/n): ").lower()
+                if choice == 'o':
+                    print("[INFO] Suppression de l'ancien environnement...")
+                    import shutil
+                    shutil.rmtree(venv_dir)
+                    print("[INFO] Création du nouvel environnement...")
+                    subprocess.run([python_exec, "-m", "venv", venv_dir], check=True)
 
     # 2) Installation / mise à jour des dépendances
     print("[INFO] Installation / Mise à jour des dépendances...")
