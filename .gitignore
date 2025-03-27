@@ -1,3 +1,9 @@
+# Personal files
+RacingSimulatorLinux/
+.venv
+docs
+data
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -172,5 +178,3 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-
-RacingSimulatorLinux/

@@ -1,0 +1,16 @@
+{
+    "agents": [
+      {
+        "fov": 180,
+        "nbRay": 10
+      }
+    ],
+    "graphic_settings": {
+      "width": 800,
+      "height": 600,
+      "quality_level": 1
+    },
+    "time_scale": 1.0,
+    "no_graphics": false
+  }
+  
