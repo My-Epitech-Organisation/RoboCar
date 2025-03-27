@@ -11,16 +11,20 @@ import json
 from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.side_channel.engine_configuration_channel import EngineConfigurationChannel
 import pygame
-from .utils_collector import parse_user_input
+import utils_collector
+from utils_collector import parse_user_input
 
 def main():
-    # 1) Charger la config Raycast
-    config_path = os.path.join("..", "..", "..", "config", "raycast_config.json")
+    # Définir le chemin du projet racine
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    
+    # 1) Charger la config Raycast (chemin absolu)
+    config_path = os.path.join(project_root, "config", "raycast_config.json")
     with open(config_path, "r") as f:
         raycast_config = json.load(f)
 
     # Paramètres de la simulation (file_name, etc.)
-    unity_env_path = os.path.join("..", "..", "..", "RacingSimulatorLinux", "RacingSimulator.x86_64")
+    unity_env_path = os.path.join(project_root, "RacingSimulatorLinux", "RacingSimulator.x86_64")
     
     # 2) Configurer l'environnement via EngineConfigurationChannel
     engine_config = EngineConfigurationChannel()
@@ -52,7 +56,9 @@ def main():
         joystick = None
 
     # Création du fichier CSV de sortie
-    output_file = os.path.join("..", "..", "..", "data", "raw", f"session_{int(time.time())}.csv")
+    output_dir = os.path.join(project_root, "data", "raw")
+    os.makedirs(output_dir, exist_ok=True)  # Créer le répertoire s'il n'existe pas
+    output_file = os.path.join(output_dir, f"session_{int(time.time())}.csv")
     fieldnames = ["timestamp", "steering_input", "acceleration_input", "obs_values"]
 
     with open(output_file, mode='w', newline='') as csv_file:
