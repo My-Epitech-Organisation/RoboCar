@@ -77,22 +77,22 @@ def check_and_setup_venv():
         print("[INFO] Environnement virtuel déjà présent.")
         print("[INFO] Vérification de la version Python dans l'environnement...")
 
-        py_path = os.path.join(venv_dir, bin_dir, 
+        py_path = os.path.join(venv_dir, bin_dir,
                               "python.exe" if is_windows else "python")
 
         if os.path.exists(py_path):
             result = subprocess.run(
-                [py_path, "--version"], 
-                capture_output=True, 
-                text=True, 
+                [py_path, "--version"],
+                capture_output=True,
+                text=True,
                 check=False
             )
-    
+
             if "3.10" not in result.stdout:
                 version = result.stdout.strip()
                 print(f"[ATTENTION] Version Python incorrecte: {version}")
                 choice = input("Recréer l'environnement ? (o/n): ").lower()
-   
+
                 if choice == 'o':
                     print("[INFO] Suppression de l'ancien environnement...")
                     import shutil

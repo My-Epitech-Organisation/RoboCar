@@ -28,7 +28,7 @@ def main():
     """Fonction principale du collecteur de données."""
     # Configuration des arguments de ligne de commande
     parser = argparse.ArgumentParser(description='Collecteur de données Robocar')
-    parser.add_argument('--debug-joystick', action='store_true', 
+    parser.add_argument('--debug-joystick', action='store_true',
                         help='Activer le débogage du joystick')
     args = parser.parse_args()
 
@@ -49,7 +49,7 @@ def main():
         sys.exit(1)
 
     # Vérification de l'exécutable Unity
-    unity_env_path = os.path.join(project_root, "RacingSimulatorLinux", 
+    unity_env_path = os.path.join(project_root, "RacingSimulatorLinux",
                                  "RacingSimulator.x86_64")
     print(f"[INFO] Chemin vers l'environnement Unity: {unity_env_path}")
 
@@ -134,7 +134,7 @@ def main():
         output_file = os.path.join(output_dir, f"session_{int(time.time())}.csv")
         print(f"[INFO] Écriture des données dans {output_file}")
 
-        fieldnames = ["timestamp", "steering_input", "acceleration_input", 
+        fieldnames = ["timestamp", "steering_input", "acceleration_input",
                       "raycasts", "speed"]
 
         with open(output_file, mode='w', newline='') as csv_file:
