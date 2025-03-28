@@ -21,7 +21,7 @@ from mlagents_envs.base_env import ActionTuple
 from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.side_channel.engine_configuration_channel import EngineConfigurationChannel
 
-from utils_collector import parse_user_input
+from utils_collector import parse_user_input, setup_keyboard_listener
 
 
 def main():
@@ -76,8 +76,14 @@ def main():
         time_scale=raycast_config["time_scale"]
     )
 
-    # Initialisation de pygame pour les entrées utilisateur
-    print("[INFO] Initialisation de pygame")
+    # Initialisation de l'écouteur de clavier global
+    print("[INFO] Initialisation de l'écouteur de clavier global")
+    keyboard_listener = setup_keyboard_listener()
+    keyboard_listener.start()
+    print("[INFO] Écouteur de clavier démarré - vous pouvez utiliser les flèches ou ZQSD")
+
+    # Initialisation de pygame pour le joystick uniquement
+    print("[INFO] Initialisation de pygame pour le joystick")
     pygame.init()
     joystick_count = pygame.joystick.get_count()
     joystick = None
@@ -93,7 +99,7 @@ def main():
             print(f"[DEBUG] Nombre de trackballs: {joystick.get_numballs()}")
             print(f"[DEBUG] Nombre de hats: {joystick.get_numhats()}")
     else:
-        print("[INFO] Aucun joystick détecté, utilisation du clavier")
+        print("[INFO] Aucun joystick détecté, utilisation du clavier uniquement")
 
     # Chargement de la configuration des agents
     agent_config_path = os.path.join(project_root, "config", "agent_config.json")
@@ -146,10 +152,12 @@ def main():
                 decision_steps, terminal_steps = env.get_steps(behavior_name)
                 print("[INFO] Observations récupérées, démarrage de la boucle principale")
                 print("[INFO] Collecte de données en cours. Appuyez sur Ctrl+C pour arrêter.")
+                print("[INFO] Contrôles: Flèches directionnelles ou ZQSD pour diriger la voiture")
 
                 frame_count = 0
                 debug_count = 0
                 while True:
+                    # Traitement des événements Pygame pour le joystick
                     pygame.event.pump()
 
                     # Récupération des inputs utilisateur
@@ -187,7 +195,7 @@ def main():
                     })
 
                     # Envoi des actions à la simulation
-                    continuous_actions = np.array([[steering, accel]], dtype=np.float32)
+                    continuous_actions = np.array([[accel, steering]], dtype=np.float32)
                     action_tuple = ActionTuple(continuous=continuous_actions)
                     env.set_actions(behavior_name, action_tuple)
                     env.step()
@@ -206,6 +214,8 @@ def main():
         print(f"[ERREUR] Exception lors de l'initialisation de l'environnement Unity: {e}")
         traceback.print_exc()
     finally:
+        print("[INFO] Arrêt de l'écouteur de clavier")
+        keyboard_listener.stop()
         print("[INFO] Fermeture de pygame")
         pygame.quit()
         print("[INFO] Programme terminé.")
