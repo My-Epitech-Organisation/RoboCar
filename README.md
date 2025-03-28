@@ -13,6 +13,10 @@ make -j$(nproc)
 sudo make altinstall
 ```
 
+```bash
+sudo dnf install conda
+```
+
 ### Contributors
 
 - [@Arkteus](https://github.com/Arkteus)
