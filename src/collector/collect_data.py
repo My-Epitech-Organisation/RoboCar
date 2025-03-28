@@ -79,6 +79,10 @@ def main():
             {
                 "fov": 180,
                 "nbRay": 10
+            },
+            {
+                "fov": 48,
+                "nbRay": 36
             }
         ]
     }
