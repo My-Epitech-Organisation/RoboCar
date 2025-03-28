@@ -9,14 +9,21 @@ import csv
 import time
 import json
 import sys
-import subprocess
 from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.side_channel.engine_configuration_channel import EngineConfigurationChannel
+from mlagents_envs.base_env import ActionTuple  # Importer ActionTuple
+import numpy as np  # Importer numpy pour créer les arrays
 import pygame
 import utils_collector
 from utils_collector import parse_user_input
+import argparse  # Pour les arguments en ligne de commande
 
 def main():
+    # Ajout d'options de ligne de commande
+    parser = argparse.ArgumentParser(description='Collecteur de données pour la simulation Robocar')
+    parser.add_argument('--debug-joystick', action='store_true', help='Activer le débogage du joystick')
+    args = parser.parse_args()
+
     # Définir le chemin du projet racine
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     
@@ -64,69 +71,40 @@ def main():
     print("[INFO] Initialisation de pygame")
     pygame.init()
     joystick_count = pygame.joystick.get_count()
+    joystick = None
+    
     if joystick_count > 0:
         joystick = pygame.joystick.Joystick(0)
         joystick.init()
         print(f"[INFO] Joystick détecté: {joystick.get_name()}")
+        
+        # Afficher des informations sur les axes du joystick si le mode debug est activé
+        if args.debug_joystick:
+            print(f"[DEBUG] Nombre d'axes: {joystick.get_numaxes()}")
+            print(f"[DEBUG] Nombre de boutons: {joystick.get_numbuttons()}")
+            print(f"[DEBUG] Nombre de trackballs: {joystick.get_numballs()}")
+            print(f"[DEBUG] Nombre de hats: {joystick.get_numhats()}")
     else:
         joystick = None
         print("[INFO] Aucun joystick détecté, utilisation du clavier")
 
-    # Créer un fichier de configuration pour les agents
+    # fichier de configuration pour les agents
     agent_config_path = os.path.join(project_root, "config", "agent_config.json")
-    agent_config = {
-        "agents": [
-            {
-                "fov": 180,
-                "nbRay": 10
-            },
-            {
-                "fov": 48,
-                "nbRay": 36
-            }
-        ]
-    }
-    
-    with open(agent_config_path, 'w') as f:
-        json.dump(agent_config, f, indent=2)
-    
-    print(f"[INFO] Configuration des agents écrite dans {agent_config_path}")
 
-    # Option pour lancer Unity manuellement ou via le script
-    print("\nChoisissez une option:")
-    print("1. Lancer Unity automatiquement via le script")
-    print("2. Je vais lancer Unity manuellement")
-    option = input("Votre choix (1/2): ")
-    
-    if option == "2":
-        print("\n[INFO] Lancez Unity manuellement avec la commande suivante:")
-        unity_cmd = f"{unity_env_path} --mlagents-port 5004 --config-path={agent_config_path}"
-        print(f"    {unity_cmd}")
-        print("[INFO] Attendez que Unity soit complètement chargé puis appuyez sur Entrée...")
-        input()
-    else:
-        # Lancer Unity en arrière-plan
-        print("[INFO] Lancement de Unity en arrière-plan...")
-        unity_process = subprocess.Popen([
-            unity_env_path,
-            "--mlagents-port", "5004",
-            "--config-path", agent_config_path
-        ])
-        print("[INFO] Attente du démarrage de Unity (15 secondes)...")
-        time.sleep(15)  # Attendre que Unity démarre complètement
-    
-    # 3) Connexion à l'environnement Unity
-    print("[INFO] Tentative de connexion à l'environnement Unity...")
+    print(f"[INFO] Configuration des agents récupéré dans {agent_config_path}")
+
+    # 3) Connexion à l'environnement Unity - Lancement direct via UnityEnvironment
+    print("[INFO] Lancement et connexion à l'environnement Unity...")
     try:
-        # Au lieu de lancer Unity, on se connecte à l'environnement existant
+        # Lancer directement Unity via UnityEnvironment
         env = UnityEnvironment(
-            file_name=None,  # Connexion à un environnement existant
-            side_channels=[engine_config],
-            base_port=5004,
-            worker_id=0,
-            timeout_wait=60
+            file_name=unity_env_path,  # Spécifier le chemin de l'exécutable Unity
+            side_channels=[engine_config],  # Passer le canal de configuration
+            base_port=5004,  # Port par défaut
+            additional_args=["--config-path",  f"{agent_config_path}",   # Passer le fichier de config des agents
+                             "-logFile", "unity.log"]
         )
-        
+
         print("[INFO] Réinitialisation de l'environnement Unity")
         env.reset()
         print("[INFO] Environnement Unity initialisé avec succès!")
@@ -140,7 +118,7 @@ def main():
         print(f"[INFO] Nombre d'observations: {len(behavior_spec.observation_specs)}")
         for i, obs_spec in enumerate(behavior_spec.observation_specs):
             print(f"[INFO] Observation {i}: forme={obs_spec.shape}, type={obs_spec.observation_type}")
-        print(f"[INFO] Type d'action: {behavior_spec.action_spec.name}")
+        print(f"[INFO] Type d'action: Continue avec {behavior_spec.action_spec.continuous_size} dimensions")
         print(f"[INFO] Taille d'action continue: {behavior_spec.action_spec.continuous_size}")
 
         # Création du fichier CSV de sortie
@@ -162,11 +140,20 @@ def main():
                 print("[INFO] Collecte de données en cours. Appuyez sur Ctrl+C pour arrêter.")
 
                 frame_count = 0
+                debug_count = 0
                 while True:
                     pygame.event.pump()
 
                     # Récupération des inputs
                     steering, accel = parse_user_input(joystick)
+                    
+                    # Débogage des valeurs brutes du joystick
+                    if args.debug_joystick and joystick and debug_count % 30 == 0:
+                        print("\n[DEBUG JOYSTICK] Valeurs brutes des axes:")
+                        for i in range(joystick.get_numaxes()):
+                            print(f"  Axe {i}: {joystick.get_axis(i):.3f}")
+                        print(f"[DEBUG] Direction calculée: {steering:.3f}, Accélération calculée: {accel:.3f}")
+                    debug_count += 1
 
                     # Lecture des observations (raycasts + speed)
                     raycasts = decision_steps.obs[0][0].tolist()  # 1er tensor = raycasts
@@ -189,9 +176,13 @@ def main():
                         "speed": speed
                     })
 
-                    # Envoi de l'action
-                    action = [steering, accel]
-                    env.set_actions(behavior_name, [action])
+                    # Envoi de l'action - Correction du format d'action
+                    # Créer un array numpy pour les actions continues
+                    continuous_actions = np.array([[steering, accel]], dtype=np.float32)
+                    # Créer un ActionTuple avec ces actions continues
+                    action_tuple = ActionTuple(continuous=continuous_actions)
+                    # Passer l'ActionTuple à env.set_actions()
+                    env.set_actions(behavior_name, action_tuple)
                     env.step()
 
                     decision_steps, terminal_steps = env.get_steps(behavior_name)
@@ -212,16 +203,6 @@ def main():
     finally:
         print("[INFO] Fermeture de pygame")
         pygame.quit()
-        
-        # Terminer le processus Unity si on l'a démarré
-        if option != "2" and 'unity_process' in locals():
-            print("[INFO] Arrêt de Unity...")
-            try:
-                unity_process.terminate()
-                unity_process.wait(timeout=5)
-            except:
-                unity_process.kill()
-                
         print("[INFO] Programme terminé.")
 
 if __name__ == "__main__":

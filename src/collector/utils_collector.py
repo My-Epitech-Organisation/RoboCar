@@ -16,11 +16,25 @@ def parse_user_input(joystick=None):
 
     # Si joystick/manette présent
     if joystick is not None:
-        # Exemple: steering sur axe 0, acceleration sur axe 1
-        steering = joystick.get_axis(0)
-        # On peut considérer qu'un axe négatif = frein, positif = accélération
-        accel_axis = joystick.get_axis(1)
-        acceleration = -accel_axis  # inversion si besoin
+        # Appliquer une deadzone pour éviter les mouvements involontaires
+        deadzone = 0.1
+        
+        # Inversion du mapping: axe 1 vertical pour la direction, axe 0 horizontal pour l'accélération
+        steering_axis = joystick.get_axis(1)  # Maintenant l'axe 1 (vertical) pour la direction
+        accel_axis = joystick.get_axis(0)     # Maintenant l'axe 0 (horizontal) pour l'accélération
+        
+        # Appliquer la deadzone
+        if abs(steering_axis) < deadzone:
+            steering_axis = 0.0
+        if abs(accel_axis) < deadzone:
+            accel_axis = 0.0
+            
+        # Mapping: axe vertical pour la direction
+        steering = -steering_axis
+        
+        # Correction de l'axe d'accélération: négatif = avancer, positif = reculer
+        # Sur la plupart des manettes, pousser le stick vers le bas donne une valeur positive
+        acceleration = accel_axis  # Inverser l'axe horizontal comme on l'a fait avec l'axe vertical
     else:
         # Sinon, lecture du clavier
         keys = pygame.key.get_pressed()
