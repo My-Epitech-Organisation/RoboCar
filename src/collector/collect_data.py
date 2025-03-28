@@ -154,7 +154,7 @@ def main():
 
                     # Récupération des inputs utilisateur
                     steering, accel = parse_user_input(joystick)
-        
+
                     # Affichage des valeurs du joystick en mode debug
                     if args.debug_joystick and joystick and debug_count % 30 == 0:
                         print("\n[DEBUG JOYSTICK] Valeurs brutes des axes:")
@@ -167,10 +167,10 @@ def main():
                     # Lecture des observations
                     raycasts = decision_steps.obs[0][0].tolist()
                     speed = 0.0
-        
+
                     if len(decision_steps.obs) > 1:
                         speed = float(decision_steps.obs[1][0][0])
-        
+
                     # Affichage périodique des informations
                     frame_count += 1
                     if frame_count % 10 == 0:
