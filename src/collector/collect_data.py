@@ -9,6 +9,7 @@ import csv
 import time
 import json
 import sys
+import subprocess
 from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.side_channel.engine_configuration_channel import EngineConfigurationChannel
 import pygame
@@ -71,17 +72,55 @@ def main():
         joystick = None
         print("[INFO] Aucun joystick détecté, utilisation du clavier")
 
-    # 3) Lancement de l'environnement Unity avec un timeout plus long
-    print("[INFO] Lancement de l'environnement Unity (peut prendre jusqu'à 2 minutes)...")
+    # Créer un fichier de configuration pour les agents
+    agent_config_path = os.path.join(project_root, "config", "agent_config.json")
+    agent_config = {
+        "agents": [
+            {
+                "fov": 180,
+                "nbRay": 10
+            }
+        ]
+    }
+    
+    with open(agent_config_path, 'w') as f:
+        json.dump(agent_config, f, indent=2)
+    
+    print(f"[INFO] Configuration des agents écrite dans {agent_config_path}")
+
+    # Option pour lancer Unity manuellement ou via le script
+    print("\nChoisissez une option:")
+    print("1. Lancer Unity automatiquement via le script")
+    print("2. Je vais lancer Unity manuellement")
+    option = input("Votre choix (1/2): ")
+    
+    if option == "2":
+        print("\n[INFO] Lancez Unity manuellement avec la commande suivante:")
+        unity_cmd = f"{unity_env_path} --mlagents-port 5004 --config-path={agent_config_path}"
+        print(f"    {unity_cmd}")
+        print("[INFO] Attendez que Unity soit complètement chargé puis appuyez sur Entrée...")
+        input()
+    else:
+        # Lancer Unity en arrière-plan
+        print("[INFO] Lancement de Unity en arrière-plan...")
+        unity_process = subprocess.Popen([
+            unity_env_path,
+            "--mlagents-port", "5004",
+            "--config-path", agent_config_path
+        ])
+        print("[INFO] Attente du démarrage de Unity (15 secondes)...")
+        time.sleep(15)  # Attendre que Unity démarre complètement
+    
+    # 3) Connexion à l'environnement Unity
+    print("[INFO] Tentative de connexion à l'environnement Unity...")
     try:
+        # Au lieu de lancer Unity, on se connecte à l'environnement existant
         env = UnityEnvironment(
-            file_name=unity_env_path,
+            file_name=None,  # Connexion à un environnement existant
             side_channels=[engine_config],
-            no_graphics=raycast_config.get("no_graphics", False),
-            timeout_wait=120,  # Augmenter le timeout à 120 secondes
-            additional_args=["--mlagents-port", "5004", "--no-user-interaction"],
             base_port=5004,
-            worker_id=0
+            worker_id=0,
+            timeout_wait=60
         )
         
         print("[INFO] Réinitialisation de l'environnement Unity")
@@ -106,7 +145,7 @@ def main():
         output_file = os.path.join(output_dir, f"session_{int(time.time())}.csv")
         print(f"[INFO] Écriture des données dans {output_file}")
         
-        fieldnames = ["timestamp", "steering_input", "acceleration_input", "obs_values"]
+        fieldnames = ["timestamp", "steering_input", "acceleration_input", "raycasts", "speed"]
 
         with open(output_file, mode='w', newline='') as csv_file:
             writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
@@ -118,22 +157,32 @@ def main():
                 print("[INFO] Observations récupérées, démarrage de la boucle principale")
                 print("[INFO] Collecte de données en cours. Appuyez sur Ctrl+C pour arrêter.")
 
+                frame_count = 0
                 while True:
                     pygame.event.pump()
 
                     # Récupération des inputs
                     steering, accel = parse_user_input(joystick)
 
-                    # Lecture des observations (ex: raycasts + speed)
-                    obs = decision_steps.obs[0][0]  # Hypothèse : le 1er tensor = raycasts
-                    print(f"Lidar info: {obs.tolist()}")
+                    # Lecture des observations (raycasts + speed)
+                    raycasts = decision_steps.obs[0][0].tolist()  # 1er tensor = raycasts
+                    speed = 0.0
+                    
+                    if len(decision_steps.obs) > 1:  # S'il y a un deuxième tensor, c'est probablement la vitesse
+                        speed = float(decision_steps.obs[1][0][0])
+                    
+                    # Afficher les informations toutes les 10 frames pour ne pas surcharger la console
+                    frame_count += 1
+                    if frame_count % 10 == 0:
+                        print(f"Commandes: direction={steering:.2f}, accélération={accel:.2f}, vitesse={speed:.2f}")
 
                     # Ecriture dans le CSV
                     writer.writerow({
                         "timestamp": time.time(),
                         "steering_input": steering,
                         "acceleration_input": accel,
-                        "obs_values": obs.tolist()
+                        "raycasts": str(raycasts),  # Convertir en string pour le CSV
+                        "speed": speed
                     })
 
                     # Envoi de l'action
@@ -159,6 +208,16 @@ def main():
     finally:
         print("[INFO] Fermeture de pygame")
         pygame.quit()
+        
+        # Terminer le processus Unity si on l'a démarré
+        if option != "2" and 'unity_process' in locals():
+            print("[INFO] Arrêt de Unity...")
+            try:
+                unity_process.terminate()
+                unity_process.wait(timeout=5)
+            except:
+                unity_process.kill()
+                
         print("[INFO] Programme terminé.")
 
 if __name__ == "__main__":
