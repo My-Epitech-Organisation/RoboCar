@@ -25,7 +25,7 @@ def main():
 
     # Paramètres de la simulation (file_name, etc.)
     unity_env_path = os.path.join(project_root, "RacingSimulatorLinux", "RacingSimulator.x86_64")
-    
+
     # 2) Configurer l'environnement via EngineConfigurationChannel
     engine_config = EngineConfigurationChannel()
     engine_config.set_configuration_parameters(
@@ -76,7 +76,7 @@ def main():
 
                 # Lecture des observations (ex: raycasts + speed)
                 obs = decision_steps.obs[0][0]  # Hypothèse : le 1er tensor = raycasts
-                # ...
+                print("Lidar info:", obs.tolist())
 
                 # Ecriture dans le CSV
                 writer.writerow({
