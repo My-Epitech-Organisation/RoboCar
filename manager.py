@@ -52,10 +52,10 @@ def check_and_setup_venv():
     Si non, le crée et installe les dépendances via requirements.txt.
     """
     venv_dir = ".venv"
-    
+
     # Obtenir l'exécutable Python 3.10.12
     python_exec = check_python_version()
-    
+
     # Déterminer le séparateur et les chemins selon l'OS
     is_windows = platform.system() == "Windows"
     activate_path = os.path.join(venv_dir, "Scripts", "activate") if is_windows else os.path.join(venv_dir, "bin", "activate")
@@ -98,7 +98,7 @@ def launch_collect_data():
     is_windows = platform.system() == "Windows"
     activate_path = os.path.join(".venv", "Scripts", "activate") if is_windows else os.path.join(".venv", "bin", "activate")
     activate_cmd = f"call {activate_path}" if is_windows else f"source {activate_path}"
-    
+
     cmd = f"{activate_cmd} && python src/collector/collect_data.py"
     subprocess.run(cmd, shell=True, check=True)
 
@@ -110,7 +110,7 @@ def launch_training():
     is_windows = platform.system() == "Windows"
     activate_path = os.path.join(".venv", "Scripts", "activate") if is_windows else os.path.join(".venv", "bin", "activate")
     activate_cmd = f"call {activate_path}" if is_windows else f"source {activate_path}"
-    
+
     cmd = f"{activate_cmd} && python src/model/train.py"
     subprocess.run(cmd, shell=True, check=True)
 
@@ -122,7 +122,7 @@ def launch_inference():
     is_windows = platform.system() == "Windows"
     activate_path = os.path.join(".venv", "Scripts", "activate") if is_windows else os.path.join(".venv", "bin", "activate")
     activate_cmd = f"call {activate_path}" if is_windows else f"source {activate_path}"
-    
+
     cmd = f"{activate_cmd} && python src/inference/run_model.py"
     subprocess.run(cmd, shell=True, check=True)
 

@@ -1,33 +1,41 @@
 """
-src/collector/collect_data.py
 Script principal pour la collecte de données depuis la simulation Unity.
-Lit la config raycast_config.json, lance Unity, puis enregistre les actions utilisateurs.
+
+Ce script:
+1. Lit la configuration de raycast_config.json
+2. Lance la simulation Unity
+3. Enregistre les actions utilisateur et les données capteurs
 """
 
-import os
+import argparse
 import csv
-import time
 import json
+import os
 import sys
+import time
+import traceback
+
+import numpy as np
+import pygame
+from mlagents_envs.base_env import ActionTuple
 from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.side_channel.engine_configuration_channel import EngineConfigurationChannel
-from mlagents_envs.base_env import ActionTuple  # Importer ActionTuple
-import numpy as np  # Importer numpy pour créer les arrays
-import pygame
-import utils_collector
+
 from utils_collector import parse_user_input
-import argparse  # Pour les arguments en ligne de commande
+
 
 def main():
-    # Ajout d'options de ligne de commande
-    parser = argparse.ArgumentParser(description='Collecteur de données pour la simulation Robocar')
-    parser.add_argument('--debug-joystick', action='store_true', help='Activer le débogage du joystick')
+    """Fonction principale du collecteur de données."""
+    # Configuration des arguments de ligne de commande
+    parser = argparse.ArgumentParser(description='Collecteur de données Robocar')
+    parser.add_argument('--debug-joystick', action='store_true', 
+                        help='Activer le débogage du joystick')
     args = parser.parse_args()
 
-    # Définir le chemin du projet racine
+    # Définition du chemin racine du projet
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    
-    # 1) Charger la config Raycast (chemin absolu)
+
+    # Chargement de la configuration Raycast
     config_path = os.path.join(project_root, "config", "raycast_config.json")
     print(f"[INFO] Chargement de la configuration depuis {config_path}")
     try:
@@ -40,15 +48,16 @@ def main():
         print(f"[ERREUR] Fichier de configuration mal formaté: {config_path}")
         sys.exit(1)
 
-    # Paramètres de la simulation (file_name, etc.)
-    unity_env_path = os.path.join(project_root, "RacingSimulatorLinux", "RacingSimulator.x86_64")
+    # Vérification de l'exécutable Unity
+    unity_env_path = os.path.join(project_root, "RacingSimulatorLinux", 
+                                 "RacingSimulator.x86_64")
     print(f"[INFO] Chemin vers l'environnement Unity: {unity_env_path}")
-    
+
     if not os.path.exists(unity_env_path):
         print(f"[ERREUR] L'exécutable Unity n'existe pas: {unity_env_path}")
         sys.exit(1)
 
-    # Vérifier si l'exécutable a les permissions d'exécution
+    # Ajout des permissions d'exécution si nécessaire
     if not os.access(unity_env_path, os.X_OK):
         print(f"[AVERTISSEMENT] Ajout des permissions d'exécution à {unity_env_path}")
         try:
@@ -57,7 +66,7 @@ def main():
             print(f"[ERREUR] Impossible d'ajouter les permissions d'exécution: {e}")
             sys.exit(1)
 
-    # 2) Configurer l'environnement via EngineConfigurationChannel
+    # Configuration du canal de communication Unity
     print("[INFO] Configuration du canal de communication avec Unity")
     engine_config = EngineConfigurationChannel()
     engine_config.set_configuration_parameters(
@@ -67,67 +76,66 @@ def main():
         time_scale=raycast_config["time_scale"]
     )
 
-    # Initialisation de pygame avant le lancement de Unity
+    # Initialisation de pygame pour les entrées utilisateur
     print("[INFO] Initialisation de pygame")
     pygame.init()
     joystick_count = pygame.joystick.get_count()
     joystick = None
-    
+
     if joystick_count > 0:
         joystick = pygame.joystick.Joystick(0)
         joystick.init()
         print(f"[INFO] Joystick détecté: {joystick.get_name()}")
-        
-        # Afficher des informations sur les axes du joystick si le mode debug est activé
+
         if args.debug_joystick:
             print(f"[DEBUG] Nombre d'axes: {joystick.get_numaxes()}")
             print(f"[DEBUG] Nombre de boutons: {joystick.get_numbuttons()}")
             print(f"[DEBUG] Nombre de trackballs: {joystick.get_numballs()}")
             print(f"[DEBUG] Nombre de hats: {joystick.get_numhats()}")
     else:
-        joystick = None
         print("[INFO] Aucun joystick détecté, utilisation du clavier")
 
-    # fichier de configuration pour les agents
+    # Chargement de la configuration des agents
     agent_config_path = os.path.join(project_root, "config", "agent_config.json")
+    print(f"[INFO] Configuration des agents récupérée dans {agent_config_path}")
 
-    print(f"[INFO] Configuration des agents récupéré dans {agent_config_path}")
-
-    # 3) Connexion à l'environnement Unity - Lancement direct via UnityEnvironment
+    # Connexion à l'environnement Unity
     print("[INFO] Lancement et connexion à l'environnement Unity...")
     try:
-        # Lancer directement Unity via UnityEnvironment
         env = UnityEnvironment(
-            file_name=unity_env_path,  # Spécifier le chemin de l'exécutable Unity
-            side_channels=[engine_config],  # Passer le canal de configuration
-            base_port=5004,  # Port par défaut
-            additional_args=["--config-path",  f"{agent_config_path}",   # Passer le fichier de config des agents
-                             "-logFile", "unity.log"]
+            file_name=unity_env_path,
+            side_channels=[engine_config],
+            base_port=5004,
+            additional_args=[
+                "--config-path", f"{agent_config_path}",
+                "-logFile", "unity.log"
+            ]
         )
 
         print("[INFO] Réinitialisation de l'environnement Unity")
         env.reset()
         print("[INFO] Environnement Unity initialisé avec succès!")
 
-        # Nom du comportement
+        # Récupération des informations de comportement
         behavior_name = list(env.behavior_specs.keys())[0]
         print(f"[INFO] Comportement détecté: {behavior_name}")
-        
-        # Affichage des spécifications du comportement pour le débogage
+
         behavior_spec = env.behavior_specs[behavior_name]
         print(f"[INFO] Nombre d'observations: {len(behavior_spec.observation_specs)}")
         for i, obs_spec in enumerate(behavior_spec.observation_specs):
-            print(f"[INFO] Observation {i}: forme={obs_spec.shape}, type={obs_spec.observation_type}")
-        print(f"[INFO] Type d'action: Continue avec {behavior_spec.action_spec.continuous_size} dimensions")
-        print(f"[INFO] Taille d'action continue: {behavior_spec.action_spec.continuous_size}")
+            print(f"[INFO] Observation {i}: forme={obs_spec.shape}, "
+                  f"type={obs_spec.observation_type}")
+        print(f"[INFO] Type d'action: Continue avec "
+              f"{behavior_spec.action_spec.continuous_size} dimensions")
 
-        # Création du fichier CSV de sortie
+        # Préparation du fichier de sortie CSV
         output_dir = os.path.join(project_root, "data", "raw")
-        os.makedirs(output_dir, exist_ok=True)  # Créer le répertoire s'il n'existe pas
+        os.makedirs(output_dir, exist_ok=True)
         output_file = os.path.join(output_dir, f"session_{int(time.time())}.csv")
         print(f"[INFO] Écriture des données dans {output_file}")
-        
-        fieldnames = ["timestamp", "steering_input", "acceleration_input", "raycasts", "speed"]
+
+        fieldnames = ["timestamp", "steering_input", "acceleration_input", 
+                      "raycasts", "speed"]
 
         with open(output_file, mode='w', newline='') as csv_file:
             writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
@@ -144,44 +152,43 @@ def main():
                 while True:
                     pygame.event.pump()
 
-                    # Récupération des inputs
+                    # Récupération des inputs utilisateur
                     steering, accel = parse_user_input(joystick)
-                    
-                    # Débogage des valeurs brutes du joystick
+        
+                    # Affichage des valeurs du joystick en mode debug
                     if args.debug_joystick and joystick and debug_count % 30 == 0:
                         print("\n[DEBUG JOYSTICK] Valeurs brutes des axes:")
                         for i in range(joystick.get_numaxes()):
                             print(f"  Axe {i}: {joystick.get_axis(i):.3f}")
-                        print(f"[DEBUG] Direction calculée: {steering:.3f}, Accélération calculée: {accel:.3f}")
+                        print(f"[DEBUG] Direction: {steering:.3f}, "
+                              f"Accélération: {accel:.3f}")
                     debug_count += 1
 
-                    # Lecture des observations (raycasts + speed)
-                    raycasts = decision_steps.obs[0][0].tolist()  # 1er tensor = raycasts
+                    # Lecture des observations
+                    raycasts = decision_steps.obs[0][0].tolist()
                     speed = 0.0
-                    
-                    if len(decision_steps.obs) > 1:  # S'il y a un deuxième tensor, c'est probablement la vitesse
+        
+                    if len(decision_steps.obs) > 1:
                         speed = float(decision_steps.obs[1][0][0])
-                    
-                    # Afficher les informations toutes les 10 frames pour ne pas surcharger la console
+        
+                    # Affichage périodique des informations
                     frame_count += 1
                     if frame_count % 10 == 0:
-                        print(f"Commandes: direction={steering:.2f}, accélération={accel:.2f}, vitesse={speed:.2f}")
+                        print(f"Commandes: direction={steering:.2f}, "
+                              f"accélération={accel:.2f}, vitesse={speed:.2f}")
 
-                    # Ecriture dans le CSV
+                    # Enregistrement des données
                     writer.writerow({
                         "timestamp": time.time(),
                         "steering_input": steering,
                         "acceleration_input": accel,
-                        "raycasts": str(raycasts),  # Convertir en string pour le CSV
+                        "raycasts": str(raycasts),
                         "speed": speed
                     })
 
-                    # Envoi de l'action - Correction du format d'action
-                    # Créer un array numpy pour les actions continues
+                    # Envoi des actions à la simulation
                     continuous_actions = np.array([[steering, accel]], dtype=np.float32)
-                    # Créer un ActionTuple avec ces actions continues
                     action_tuple = ActionTuple(continuous=continuous_actions)
-                    # Passer l'ActionTuple à env.set_actions()
                     env.set_actions(behavior_name, action_tuple)
                     env.step()
 
@@ -191,19 +198,18 @@ def main():
                 print("[INFO] Collecte interrompue par l'utilisateur.")
             except Exception as e:
                 print(f"[ERREUR] Exception pendant la collecte: {e}")
-                import traceback
                 traceback.print_exc()
             finally:
                 print("[INFO] Fermeture de l'environnement Unity")
                 env.close()
     except Exception as e:
         print(f"[ERREUR] Exception lors de l'initialisation de l'environnement Unity: {e}")
-        import traceback
         traceback.print_exc()
     finally:
         print("[INFO] Fermeture de pygame")
         pygame.quit()
         print("[INFO] Programme terminé.")
+
 
 if __name__ == "__main__":
     main()
