@@ -1,10 +1,10 @@
 """
-Script de collecte de données depuis la simulation Unity.
+Data collection script from Unity simulation.
 
-Ce script:
-1. Lit la configuration depuis raycast_config.json
-2. Lance la simulation Unity
-3. Enregistre les actions utilisateur et les données des capteurs
+This script:
+1. Reads configuration from raycast_config.json
+2. Launches Unity simulation
+3. Records user actions and sensor data
 """
 
 import argparse
@@ -28,68 +28,68 @@ from joystick_calibrator import calibrate_joystick
 
 
 def parse_arguments():
-    """Parse les arguments de ligne de commande."""
-    parser = argparse.ArgumentParser(description='Collecteur de données Robocar')
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Robocar Data Collector')
     parser.add_argument(
         '--debug-joystick',
         action='store_true',
-        help='Activer le débogage du joystick'
+        help='Enable joystick debugging'
     )
     parser.add_argument(
         '--calibrate',
         action='store_true',
-        help='Lancer la calibration du joystick au démarrage'
+        help='Launch joystick calibration at startup'
     )
     return parser.parse_args()
 
 
 def get_project_root():
-    """Retourne le chemin racine du projet."""
+    """Return the project root path."""
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 def load_config(project_root):
-    """Charge la configuration depuis le fichier JSON."""
+    """Load configuration from JSON file."""
     config_path = os.path.join(project_root, "config", "raycast_config.json")
-    print(f"[INFO] Chargement de la configuration depuis {config_path}")
+    print(f"[INFO] Loading configuration from {config_path}")
 
     try:
         with open(config_path, "r") as f:
             return json.load(f)
     except FileNotFoundError:
-        print(f"[ERREUR] Fichier de configuration non trouvé: {config_path}")
+        print(f"[ERROR] Configuration file not found: {config_path}")
         sys.exit(1)
     except json.JSONDecodeError:
-        print(f"[ERREUR] Fichier de configuration mal formaté: {config_path}")
+        print(f"[ERROR] Malformed configuration file: {config_path}")
         sys.exit(1)
 
 
 def check_unity_executable(project_root):
-    """Vérifie l'existence et les permissions de l'exécutable Unity."""
+    """Check existence and permissions of Unity executable."""
     unity_env_path = os.path.join(
         project_root,
         "RacingSimulatorLinux",
         "RacingSimulator.x86_64"
     )
-    print(f"[INFO] Chemin vers l'environnement Unity: {unity_env_path}")
+    print(f"[INFO] Path to Unity environment: {unity_env_path}")
 
     if not os.path.exists(unity_env_path):
-        print(f"[ERREUR] L'exécutable Unity n'existe pas: {unity_env_path}")
+        print(f"[ERROR] Unity executable does not exist: {unity_env_path}")
         sys.exit(1)
 
     if not os.access(unity_env_path, os.X_OK):
-        print(f"[AVERTISSEMENT] Ajout des permissions d'exécution à {unity_env_path}")
+        print(f"[WARNING] Adding execution permissions to {unity_env_path}")
         try:
             os.chmod(unity_env_path, 0o755)
         except Exception as e:
-            print(f"[ERREUR] Impossible d'ajouter les permissions: {e}")
+            print(f"[ERROR] Unable to add permissions: {e}")
             sys.exit(1)
 
     return unity_env_path
 
 
 def init_joystick(debug_mode=False):
-    """Initialise et configure le joystick."""
+    """Initialize and configure joystick."""
     pygame.init()
     joystick_count = pygame.joystick.get_count()
     joystick = None
@@ -97,21 +97,21 @@ def init_joystick(debug_mode=False):
     if joystick_count > 0:
         joystick = pygame.joystick.Joystick(0)
         joystick.init()
-        print(f"[INFO] Joystick détecté: {joystick.get_name()}")
+        print(f"[INFO] Joystick detected: {joystick.get_name()}")
 
         if debug_mode:
-            print(f"[DEBUG] Nombre d'axes: {joystick.get_numaxes()}")
-            print(f"[DEBUG] Nombre de boutons: {joystick.get_numbuttons()}")
-            print(f"[DEBUG] Nombre de trackballs: {joystick.get_numballs()}")
-            print(f"[DEBUG] Nombre de hats: {joystick.get_numhats()}")
+            print(f"[DEBUG] Number of axes: {joystick.get_numaxes()}")
+            print(f"[DEBUG] Number of buttons: {joystick.get_numbuttons()}")
+            print(f"[DEBUG] Number of trackballs: {joystick.get_numballs()}")
+            print(f"[DEBUG] Number of hats: {joystick.get_numhats()}")
     else:
-        print("[INFO] Aucun joystick détecté, utilisation du clavier uniquement")
+        print("[INFO] No joystick detected, using keyboard only")
 
     return joystick
 
 
 def reinitialize_joystick(debug_mode=False):
-    """Réinitialise complètement le joystick après calibration."""
+    """Completely reinitialize joystick after calibration."""
     if not pygame.get_init():
         pygame.init()
 
@@ -126,27 +126,27 @@ def reinitialize_joystick(debug_mode=False):
         try:
             joystick = pygame.joystick.Joystick(0)
             joystick.init()
-            print(f"[INFO] Joystick réinitialisé: {joystick.get_name()}")
+            print(f"[INFO] Joystick reinitialized: {joystick.get_name()}")
 
             if debug_mode:
-                print(f"[DEBUG] Nombre d'axes: {joystick.get_numaxes()}")
+                print(f"[DEBUG] Number of axes: {joystick.get_numaxes()}")
                 for i in range(joystick.get_numaxes()):
-                    print(f"  Axe {i}: {joystick.get_axis(i):.3f}")
+                    print(f"  Axis {i}: {joystick.get_axis(i):.3f}")
         except pygame.error as e:
-            print(f"[ERREUR] Impossible de réinitialiser le joystick: {e}")
+            print(f"[ERROR] Unable to reinitialize joystick: {e}")
             return None
     else:
-        print("[INFO] Aucun joystick détecté après réinitialisation")
+        print("[INFO] No joystick detected after reinitialization")
 
     return joystick
 
 
 def setup_unity_environment(unity_env_path, engine_config, project_root):
-    """Configure et initialise l'environnement Unity."""
+    """Configure and initialize Unity environment."""
     agent_config_path = os.path.join(project_root, "config", "agent_config.json")
-    print(f"[INFO] Configuration des agents récupérée dans {agent_config_path}")
+    print(f"[INFO] Agent configuration retrieved from {agent_config_path}")
 
-    print("[INFO] Lancement et connexion à l'environnement Unity...")
+    print("[INFO] Launching and connecting to Unity environment...")
     env = UnityEnvironment(
         file_name=unity_env_path,
         side_channels=[engine_config],
@@ -157,61 +157,61 @@ def setup_unity_environment(unity_env_path, engine_config, project_root):
         ]
     )
 
-    print("[INFO] Réinitialisation de l'environnement Unity")
+    print("[INFO] Resetting Unity environment")
     env.reset()
-    print("[INFO] Environnement Unity initialisé avec succès!")
+    print("[INFO] Unity environment successfully initialized!")
 
     return env, agent_config_path
 
 
 def setup_data_collection(env, project_root):
-    """Configure les structures pour la collecte de données."""
+    """Configure structures for data collection."""
     behavior_name = list(env.behavior_specs.keys())[0]
-    print(f"[INFO] Comportement détecté: {behavior_name}")
+    print(f"[INFO] Detected behavior: {behavior_name}")
 
     behavior_spec = env.behavior_specs[behavior_name]
-    print(f"[INFO] Nombre d'observations: {len(behavior_spec.observation_specs)}")
+    print(f"[INFO] Number of observations: {len(behavior_spec.observation_specs)}")
 
     for i, obs_spec in enumerate(behavior_spec.observation_specs):
         print(
-            f"[INFO] Observation {i}: forme={obs_spec.shape}, "
+            f"[INFO] Observation {i}: shape={obs_spec.shape}, "
             f"type={obs_spec.observation_type}"
         )
 
     print(
-        f"[INFO] Type d'action: Continue avec "
+        f"[INFO] Action type: Continuous with "
         f"{behavior_spec.action_spec.continuous_size} dimensions"
     )
 
     output_dir = os.path.join(project_root, "data", "raw")
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, f"session_{int(time.time())}.csv")
-    print(f"[INFO] Écriture des données dans {output_file}")
+    print(f"[INFO] Writing data to {output_file}")
 
     return behavior_name, behavior_spec, output_file
 
 
 def handle_joystick_calibration(joystick, debug_joystick):
-    """Gère le processus de calibration du joystick."""
+    """Handle joystick calibration process."""
     if not joystick:
-        print("[ERREUR] Aucun joystick détecté pour la calibration.")
+        print("[ERROR] No joystick detected for calibration.")
         return joystick, False
 
-    print("[INFO] Lancement de la calibration...")
+    print("[INFO] Starting calibration...")
     calibrate_joystick(joystick)
-    print("[INFO] Calibration terminée, réinitialisation du joystick...")
+    print("[INFO] Calibration completed, reinitializing joystick...")
 
     pygame.quit()
     pygame.init()
 
     joystick = reinitialize_joystick(debug_joystick)
-    print("[INFO] Reprise de la collecte avec joystick réinitialisé.")
+    print("[INFO] Resuming collection with reinitialized joystick.")
 
     return joystick, True
 
 
 def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=False):
-    """Exécute la boucle principale de collecte de données."""
+    """Execute main data collection loop."""
     fieldnames = [
         "timestamp", "steering_input", "acceleration_input", "raycasts", "speed"
     ]
@@ -220,12 +220,12 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
         writer.writeheader()
 
-        print("[INFO] Récupération des premières observations...")
+        print("[INFO] Getting first observations...")
         decision_steps, terminal_steps = env.get_steps(behavior_name)
-        print("[INFO] Observations récupérées, démarrage de la boucle principale")
-        print("[INFO] Collecte de données en cours. Ctrl+C pour arrêter.")
-        print("[INFO] Contrôles: Flèches directionnelles ou ZQSD")
-        print("[INFO] Appuyez sur 'c' pour calibrer le joystick")
+        print("[INFO] Observations retrieved, starting main loop")
+        print("[INFO] Data collection in progress. Press Ctrl+C to stop.")
+        print("[INFO] Controls: Arrow keys or WASD/ZQSD")
+        print("[INFO] Press 'c' to calibrate joystick")
 
         frame_count = 0
         debug_count = 0
@@ -235,15 +235,15 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
 
         while True:
             if not pygame.get_init():
-                print("[INFO] Réinitialisation de pygame...")
+                print("[INFO] Reinitializing pygame...")
                 pygame.init()
 
             pygame.event.pump()
 
-            # Gestion de la calibration
+            # Calibration management
             if key_states['c'] and not calibration_requested:
                 calibration_requested = True
-                print("[INFO] Calibration du joystick demandée...")
+                print("[INFO] Joystick calibration requested...")
                 joystick, post_calibration = handle_joystick_calibration(
                     joystick, debug_joystick
                 )
@@ -252,49 +252,49 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
             if not key_states['c']:
                 calibration_requested = False
 
-            # Si période de stabilisation post-calibration
+            # Post-calibration stabilization period
             if post_calibration:
                 post_calibration_counter += 1
                 if post_calibration_counter > 10:
                     post_calibration = False
                     if joystick and debug_joystick:
-                        print("[DEBUG] État du joystick après stabilisation:")
+                        print("[DEBUG] Joystick state after stabilization:")
                         for i in range(joystick.get_numaxes()):
-                            print(f"  Axe {i}: {joystick.get_axis(i):.3f}")
+                            print(f"  Axis {i}: {joystick.get_axis(i):.3f}")
 
-            # Récupération des inputs utilisateur
+            # Get user inputs
             if post_calibration:
                 steering, accel = 0.0, 0.0
             else:
                 steering, accel = parse_user_input(joystick)
 
-            # Affichage des valeurs du joystick en mode debug
+            # Display joystick values in debug mode
             if debug_joystick and joystick and debug_count % 30 == 0:
-                print("\n[DEBUG JOYSTICK] Valeurs brutes des axes:")
+                print("\n[DEBUG JOYSTICK] Raw axis values:")
                 for i in range(joystick.get_numaxes()):
-                    print(f"  Axe {i}: {joystick.get_axis(i):.3f}")
+                    print(f"  Axis {i}: {joystick.get_axis(i):.3f}")
                 print(
-                    f"[DEBUG] Direction: {steering:.3f}, "
-                    f"Accélération: {accel:.3f}"
+                    f"[DEBUG] Steering: {steering:.3f}, "
+                    f"Acceleration: {accel:.3f}"
                 )
             debug_count += 1
 
-            # Lecture des observations
+            # Read observations
             raycasts = decision_steps.obs[0][0].tolist()
             speed = 0.0
 
             if len(decision_steps.obs) > 1:
                 speed = float(decision_steps.obs[1][0][0])
 
-            # Affichage périodique
+            # Periodic display
             frame_count += 1
             if frame_count % 10 == 0:
                 print(
-                    f"Commandes: direction={steering:.2f}, "
-                    f"accélération={accel:.2f}, vitesse={speed:.2f}"
+                    f"Commands: steering={steering:.2f}, "
+                    f"acceleration={accel:.2f}, speed={speed:.2f}"
                 )
 
-            # Enregistrement des données
+            # Record data
             writer.writerow({
                 "timestamp": time.time(),
                 "steering_input": steering,
@@ -303,7 +303,7 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
                 "speed": speed
             })
 
-            # Envoi des actions à la simulation
+            # Send actions to simulation
             continuous_actions = np.array([[accel, steering]], dtype=np.float32)
             action_tuple = ActionTuple(continuous=continuous_actions)
             env.set_actions(behavior_name, action_tuple)
@@ -313,14 +313,14 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
 
 
 def main():
-    """Fonction principale du collecteur de données."""
+    """Main function of the data collector."""
     args = parse_arguments()
     project_root = get_project_root()
     raycast_config = load_config(project_root)
     unity_env_path = check_unity_executable(project_root)
 
-    # Configuration du canal de communication Unity
-    print("[INFO] Configuration du canal de communication avec Unity")
+    # Configure Unity communication channel
+    print("[INFO] Configuring communication channel with Unity")
     engine_config = EngineConfigurationChannel()
     engine_config.set_configuration_parameters(
         width=raycast_config["graphic_settings"]["width"],
@@ -329,53 +329,53 @@ def main():
         time_scale=raycast_config["time_scale"]
     )
 
-    # Initialisation de l'écouteur de clavier global
-    print("[INFO] Initialisation de l'écouteur de clavier global")
+    # Initialize global keyboard listener
+    print("[INFO] Initializing global keyboard listener")
     keyboard_listener = setup_keyboard_listener()
     keyboard_listener.start()
-    print("[INFO] Écouteur de clavier démarré - flèches ou ZQSD")
+    print("[INFO] Keyboard listener started - arrows or WASD/ZQSD")
 
-    # Initialisation du joystick
+    # Initialize joystick
     joystick = init_joystick(args.debug_joystick)
 
-    # Calibration au démarrage si demandé
+    # Calibrate at startup if requested
     if args.calibrate and joystick:
-        print("[INFO] Calibration du joystick au démarrage...")
+        print("[INFO] Joystick calibration at startup...")
         calibrate_joystick(joystick)
 
     try:
-        # Configuration de l'environnement Unity
+        # Configure Unity environment
         env, _ = setup_unity_environment(unity_env_path, engine_config, project_root)
 
         try:
-            # Configuration de la collecte de données
+            # Configure data collection
             behavior_name, _, output_file = setup_data_collection(env, project_root)
 
             try:
-                # Boucle de collecte de données
+                # Data collection loop
                 collect_data_loop(
                     env, behavior_name, output_file, joystick, args.debug_joystick
                 )
             except KeyboardInterrupt:
-                print("[INFO] Collecte interrompue par l'utilisateur.")
+                print("[INFO] Collection interrupted by user.")
             except Exception as e:
-                print(f"[ERREUR] Exception pendant la collecte: {e}")
+                print(f"[ERROR] Exception during collection: {e}")
                 traceback.print_exc()
         except Exception as e:
-            print(f"[ERREUR] Exception lors de la configuration: {e}")
+            print(f"[ERROR] Exception during configuration: {e}")
             traceback.print_exc()
         finally:
-            print("[INFO] Fermeture de l'environnement Unity")
+            print("[INFO] Closing Unity environment")
             env.close()
     except Exception as e:
-        print(f"[ERREUR] Exception lors de l'initialisation Unity: {e}")
+        print(f"[ERROR] Exception during Unity initialization: {e}")
         traceback.print_exc()
     finally:
-        print("[INFO] Arrêt de l'écouteur de clavier")
+        print("[INFO] Stopping keyboard listener")
         keyboard_listener.stop()
-        print("[INFO] Fermeture de pygame")
+        print("[INFO] Closing pygame")
         pygame.quit()
-        print("[INFO] Programme terminé.")
+        print("[INFO] Program terminated.")
 
 
 if __name__ == "__main__":
