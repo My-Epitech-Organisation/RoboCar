@@ -77,13 +77,12 @@ def check_unity_executable(project_root):
         print(f"[ERREUR] L'exécutable Unity n'existe pas: {unity_env_path}")
         sys.exit(1)
 
-    # Ajout des permissions d'exécution si nécessaire
     if not os.access(unity_env_path, os.X_OK):
         print(f"[AVERTISSEMENT] Ajout des permissions d'exécution à {unity_env_path}")
         try:
             os.chmod(unity_env_path, 0o755)
         except Exception as e:
-            print(f"[ERREUR] Impossible d'ajouter les permissions d'exécution: {e}")
+            print(f"[ERREUR] Impossible d'ajouter les permissions: {e}")
             sys.exit(1)
 
     return unity_env_path
@@ -112,17 +111,11 @@ def init_joystick(debug_mode=False):
 
 
 def reinitialize_joystick(debug_mode=False):
-    """
-    Réinitialise complètement le joystick.
-    Utile après la calibration.
-    """
-    # Assurez-vous que pygame est initialisé
+    """Réinitialise complètement le joystick après calibration."""
     if not pygame.get_init():
         pygame.init()
     
-    # Réinitialiser complètement le sous-système de joystick
     pygame.joystick.quit()
-    # Bref délai pour permettre au système de se stabiliser
     pygame.time.delay(100)
     pygame.joystick.init()
     
@@ -135,7 +128,6 @@ def reinitialize_joystick(debug_mode=False):
             joystick.init()
             print(f"[INFO] Joystick réinitialisé: {joystick.get_name()}")
             
-            # Test du joystick réinitialisé
             if debug_mode:
                 print(f"[DEBUG] Nombre d'axes: {joystick.get_numaxes()}")
                 for i in range(joystick.get_numaxes()):
@@ -174,7 +166,6 @@ def setup_unity_environment(unity_env_path, engine_config, project_root):
 
 def setup_data_collection(env, project_root):
     """Configure les structures pour la collecte de données."""
-    # Récupération des informations de comportement
     behavior_name = list(env.behavior_specs.keys())[0]
     print(f"[INFO] Comportement détecté: {behavior_name}")
 
@@ -192,13 +183,31 @@ def setup_data_collection(env, project_root):
         f"{behavior_spec.action_spec.continuous_size} dimensions"
     )
 
-    # Préparation du fichier de sortie CSV
     output_dir = os.path.join(project_root, "data", "raw")
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, f"session_{int(time.time())}.csv")
     print(f"[INFO] Écriture des données dans {output_file}")
 
     return behavior_name, behavior_spec, output_file
+
+
+def handle_joystick_calibration(joystick, debug_joystick):
+    """Gère le processus de calibration du joystick."""
+    if not joystick:
+        print("[ERREUR] Aucun joystick détecté pour la calibration.")
+        return joystick, False
+    
+    print("[INFO] Lancement de la calibration...")
+    calibrate_joystick(joystick)
+    print("[INFO] Calibration terminée, réinitialisation du joystick...")
+    
+    pygame.quit()
+    pygame.init()
+    
+    joystick = reinitialize_joystick(debug_joystick)
+    print("[INFO] Reprise de la collecte avec joystick réinitialisé.")
+    
+    return joystick, True
 
 
 def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=False):
@@ -214,64 +223,40 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
         print("[INFO] Récupération des premières observations...")
         decision_steps, terminal_steps = env.get_steps(behavior_name)
         print("[INFO] Observations récupérées, démarrage de la boucle principale")
-        print("[INFO] Collecte de données en cours. Appuyez sur Ctrl+C pour arrêter.")
-        print("[INFO] Contrôles: Flèches directionnelles ou ZQSD pour diriger la voiture")
+        print("[INFO] Collecte de données en cours. Ctrl+C pour arrêter.")
+        print("[INFO] Contrôles: Flèches directionnelles ou ZQSD")
         print("[INFO] Appuyez sur 'c' pour calibrer le joystick")
 
         frame_count = 0
         debug_count = 0
-        
-        # Variable pour suivre l'état de la touche 'c'
         calibration_requested = False
-        # Variable pour suivre si on est dans l'état post-calibration
         post_calibration = False
-        # Compteur pour différer la lecture des inputs joystick après calibration
         post_calibration_counter = 0
         
         while True:
-            # Vérifier si pygame est toujours initialisé, sinon le réinitialiser
             if not pygame.get_init():
                 print("[INFO] Réinitialisation de pygame...")
                 pygame.init()
             
-            # Traitement des événements Pygame pour le joystick
             pygame.event.pump()
 
-            # Gestion de la calibration du joystick
+            # Gestion de la calibration
             if key_states['c'] and not calibration_requested:
                 calibration_requested = True
                 print("[INFO] Calibration du joystick demandée...")
+                joystick, post_calibration = handle_joystick_calibration(
+                    joystick, debug_joystick
+                )
+                post_calibration_counter = 0
                 
-                if joystick:
-                    print("[INFO] Lancement de la calibration...")
-                    calibrate_joystick(joystick)
-                    print("[INFO] Calibration terminée, réinitialisation du joystick...")
-                    
-                    # Complètement réinitialiser pygame pour s'assurer que tout fonctionne
-                    pygame.quit()
-                    pygame.init()
-                    
-                    # Réinitialisation complète du joystick
-                    joystick = reinitialize_joystick(debug_joystick)
-                    
-                    # Marquer comme post-calibration pour stabiliser le système
-                    post_calibration = True
-                    post_calibration_counter = 0
-                    
-                    print("[INFO] Reprise de la collecte avec joystick réinitialisé.")
-                else:
-                    print("[ERREUR] Aucun joystick détecté pour la calibration.")
-                
-            # Réinitialiser l'état de la demande de calibration quand 'c' est relâché
             if not key_states['c']:
                 calibration_requested = False
             
-            # Si nous sommes dans l'état post-calibration, attendre un peu
+            # Si période de stabilisation post-calibration
             if post_calibration:
                 post_calibration_counter += 1
-                if post_calibration_counter > 10:  # Attendre quelques frames
+                if post_calibration_counter > 10:
                     post_calibration = False
-                    # Vérifier l'état du joystick après stabilisation
                     if joystick and debug_joystick:
                         print("[DEBUG] État du joystick après stabilisation:")
                         for i in range(joystick.get_numaxes()):
@@ -279,10 +264,8 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
 
             # Récupération des inputs utilisateur
             if post_calibration:
-                # Durant l'état post-calibration, utiliser des valeurs neutres
                 steering, accel = 0.0, 0.0
             else:
-                # Sinon, obtenir les inputs normalement
                 steering, accel = parse_user_input(joystick)
 
             # Affichage des valeurs du joystick en mode debug
@@ -303,7 +286,7 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
             if len(decision_steps.obs) > 1:
                 speed = float(decision_steps.obs[1][0][0])
 
-            # Affichage périodique des informations
+            # Affichage périodique
             frame_count += 1
             if frame_count % 10 == 0:
                 print(
@@ -350,12 +333,12 @@ def main():
     print("[INFO] Initialisation de l'écouteur de clavier global")
     keyboard_listener = setup_keyboard_listener()
     keyboard_listener.start()
-    print("[INFO] Écouteur de clavier démarré - vous pouvez utiliser les flèches ou ZQSD")
+    print("[INFO] Écouteur de clavier démarré - flèches ou ZQSD")
 
     # Initialisation du joystick
     joystick = init_joystick(args.debug_joystick)
     
-    # Lancer la calibration au démarrage si demandé
+    # Calibration au démarrage si demandé
     if args.calibrate and joystick:
         print("[INFO] Calibration du joystick au démarrage...")
         calibrate_joystick(joystick)
@@ -385,7 +368,7 @@ def main():
             print("[INFO] Fermeture de l'environnement Unity")
             env.close()
     except Exception as e:
-        print(f"[ERREUR] Exception lors de l'initialisation de l'environnement Unity: {e}")
+        print(f"[ERREUR] Exception lors de l'initialisation Unity: {e}")
         traceback.print_exc()
     finally:
         print("[INFO] Arrêt de l'écouteur de clavier")

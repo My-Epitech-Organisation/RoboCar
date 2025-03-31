@@ -9,6 +9,7 @@ import pygame
 import time
 from utils_collector import joystick_calibration
 
+
 class JoystickCalibratorUI:
     """Interface graphique pour calibrer le joystick."""
     
@@ -24,7 +25,7 @@ class JoystickCalibratorUI:
             print("[ERREUR] Aucun joystick détecté pour la calibration")
             return
             
-        # Initialisation de Pygame si ce n'est pas déjà fait
+        # Initialisation de Pygame
         if not pygame.get_init():
             pygame.init()
             
@@ -53,10 +54,10 @@ class JoystickCalibratorUI:
         # État de la calibration
         self.is_calibrating = True
         self.start_time = time.time()
-        self.calibration_duration = 10  # Durée de la calibration en secondes
+        self.calibration_duration = 10  # Durée en secondes
         
     def update_calibration_values(self):
-        """Met à jour les valeurs min/max en fonction des entrées actuelles."""
+        """Met à jour les valeurs min/max selon les entrées actuelles."""
         if not self.joystick:
             return
             
@@ -78,7 +79,7 @@ class JoystickCalibratorUI:
     
     def save_calibration(self):
         """Enregistre les valeurs de calibration."""
-        # Vérification que les valeurs sont valides
+        # Vérification des valeurs
         if self.steering_min == self.steering_max:
             self.steering_min = -1.0
             self.steering_max = 1.0
@@ -87,13 +88,12 @@ class JoystickCalibratorUI:
             self.accel_min = -1.0
             self.accel_max = 1.0
             
-        # Mise à jour des données de calibration
+        # Mise à jour et sauvegarde
         joystick_calibration.calib_data["steering"]["min"] = self.steering_min
         joystick_calibration.calib_data["steering"]["max"] = self.steering_max
         joystick_calibration.calib_data["acceleration"]["min"] = self.accel_min
         joystick_calibration.calib_data["acceleration"]["max"] = self.accel_max
         
-        # Sauvegarde
         joystick_calibration.save_calibration()
         
     def draw_axis_visualization(self, x, y, width, height, value, min_val, max_val, label):
@@ -113,7 +113,10 @@ class JoystickCalibratorUI:
         pygame.draw.line(self.window, self.RED, (pos_x, y), (pos_x, y + height), 3)
         
         # Texte
-        text = self.small_font.render(f"{label}: {value:.2f} (Min: {min_val:.2f}, Max: {max_val:.2f})", True, self.WHITE)
+        text = self.small_font.render(
+            f"{label}: {value:.2f} (Min: {min_val:.2f}, Max: {max_val:.2f})", 
+            True, self.WHITE
+        )
         self.window.blit(text, (x, y - 25))
         
         # Marques pour -1, 0, 1
@@ -131,21 +134,95 @@ class JoystickCalibratorUI:
             return
             
         # Cadre
-        pygame.draw.rect(self.window, self.WHITE, (x - size//2, y - size//2, size, size), 2)
+        pygame.draw.rect(
+            self.window, 
+            self.WHITE, 
+            (x - size//2, y - size//2, size, size), 
+            2
+        )
         
         # Axes
-        pygame.draw.line(self.window, self.WHITE, (x - size//2, y), (x + size//2, y), 1)
-        pygame.draw.line(self.window, self.WHITE, (x, y - size//2), (x, y + size//2), 1)
+        pygame.draw.line(
+            self.window, 
+            self.WHITE, 
+            (x - size//2, y), 
+            (x + size//2, y), 
+            1
+        )
+        pygame.draw.line(
+            self.window, 
+            self.WHITE, 
+            (x, y - size//2), 
+            (x, y + size//2), 
+            1
+        )
         
         # Position actuelle
         steering = self.joystick.get_axis(0)
-        accel = -self.joystick.get_axis(1)  # Inversion pour correspondre à l'intuition
+        accel = -self.joystick.get_axis(1)  # Inversion pour l'intuition
         
         pos_x = x + int(steering * size//2)
         pos_y = y - int(accel * size//2)
         
         # Cercle représentant la position
         pygame.draw.circle(self.window, self.RED, (pos_x, pos_y), 10)
+    
+    def draw_interface(self, elapsed_time):
+        """Dessine l'interface complète de calibration."""
+        # Effacer l'écran
+        self.window.fill(self.BLACK)
+        
+        # Titre
+        title = self.font.render("Calibration du Joystick", True, self.WHITE)
+        self.window.blit(title, (self.width//2 - title.get_width()//2, 50))
+        
+        # Instructions
+        instructions = [
+            "Déplacez le joystick dans toutes les directions extrêmes",
+            f"Temps restant: {max(0, self.calibration_duration - elapsed_time):.1f}s",
+            "Appuyez sur ENTRÉE pour terminer ou ÉCHAP pour annuler"
+        ]
+        
+        for i, text in enumerate(instructions):
+            rendered = self.small_font.render(text, True, self.WHITE)
+            y_pos = 100 + i * 30
+            self.window.blit(rendered, (self.width//2 - rendered.get_width()//2, y_pos))
+        
+        # Visualisation des axes
+        self.draw_axis_visualization(
+            100, 250, self.width - 200, 40,
+            self.joystick.get_axis(0),
+            self.steering_min, self.steering_max,
+            "Direction"
+        )
+        
+        self.draw_axis_visualization(
+            100, 350, self.width - 200, 40,
+            self.joystick.get_axis(1),
+            self.accel_min, self.accel_max,
+            "Accélération"
+        )
+        
+        # Visualisation du joystick
+        self.draw_joystick_position(self.width//2, 480, 200)
+    
+    def check_events(self):
+        """
+        Vérifie les événements utilisateur.
+        
+        Returns:
+            bool: True si la calibration doit continuer, False sinon
+        """
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return False
+                elif event.key == pygame.K_RETURN:
+                    self.save_calibration()
+                    return False
+        return True
         
     def run(self):
         """Exécute la boucle principale de l'interface de calibration."""
@@ -155,53 +232,20 @@ class JoystickCalibratorUI:
         clock = pygame.time.Clock()
         
         while self.is_calibrating:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.is_calibrating = False
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        self.is_calibrating = False
-                    elif event.key == pygame.K_RETURN:
-                        self.save_calibration()
-                        self.is_calibrating = False
+            # Gestion des événements
+            self.is_calibrating = self.check_events()
             
-            # Mettre à jour les valeurs de calibration
+            # Mise à jour des valeurs de calibration
             self.update_calibration_values()
             
-            # Vérifier si le temps de calibration est écoulé
+            # Vérification du temps écoulé
             elapsed_time = time.time() - self.start_time
             if elapsed_time >= self.calibration_duration:
                 self.save_calibration()
                 self.is_calibrating = False
             
-            # Effacer l'écran
-            self.window.fill(self.BLACK)
-            
-            # Afficher les instructions
-            title = self.font.render("Calibration du Joystick", True, self.WHITE)
-            self.window.blit(title, (self.width//2 - title.get_width()//2, 50))
-            
-            instructions1 = self.small_font.render("Déplacez le joystick dans toutes les directions extrêmes", True, self.WHITE)
-            instructions2 = self.small_font.render(f"Temps restant: {max(0, self.calibration_duration - elapsed_time):.1f}s", True, self.WHITE)
-            instructions3 = self.small_font.render("Appuyez sur ENTRÉE pour terminer ou ÉCHAP pour annuler", True, self.WHITE)
-            
-            self.window.blit(instructions1, (self.width//2 - instructions1.get_width()//2, 100))
-            self.window.blit(instructions2, (self.width//2 - instructions2.get_width()//2, 130))
-            self.window.blit(instructions3, (self.width//2 - instructions3.get_width()//2, 160))
-            
-            # Visualisation des axes
-            self.draw_axis_visualization(100, 250, self.width - 200, 40, 
-                                       self.joystick.get_axis(0), 
-                                       self.steering_min, self.steering_max, 
-                                       "Direction")
-            
-            self.draw_axis_visualization(100, 350, self.width - 200, 40, 
-                                       self.joystick.get_axis(1), 
-                                       self.accel_min, self.accel_max, 
-                                       "Accélération")
-            
-            # Visualisation du joystick
-            self.draw_joystick_position(self.width//2, 480, 200)
+            # Dessin de l'interface
+            self.draw_interface(elapsed_time)
             
             # Mise à jour de l'affichage
             pygame.display.flip()
@@ -210,7 +254,7 @@ class JoystickCalibratorUI:
         # Nettoyage - ne pas fermer la fenêtre avec set_mode mais avec flip et delay
         if pygame.display.get_init():
             pygame.display.flip()
-            pygame.time.delay(100)  # Petit délai pour permettre à pygame de traiter
+            pygame.time.delay(100)  # Délai pour permettre à pygame de traiter
         
         return True
 
@@ -229,12 +273,12 @@ def calibrate_joystick(joystick):
         print("[ERREUR] Aucun joystick à calibrer")
         return False
     
-    # Sauvegarder l'ID du joystick pour vérification après calibration
+    # Sauvegarder l'ID du joystick pour vérification
     try:
         joystick_name = joystick.get_name()
         joystick_id = joystick.get_id()
     except (pygame.error, AttributeError):
-        print("[AVERTISSEMENT] Impossible d'obtenir les informations du joystick")
+        print("[AVERTISSEMENT] Impossible d'obtenir les infos du joystick")
         joystick_name = "Unknown"
         joystick_id = -1
     
@@ -242,7 +286,7 @@ def calibrate_joystick(joystick):
     calibrator = JoystickCalibratorUI(joystick)
     result = calibrator.run()
     
-    print(f"[INFO] Calibration terminée, nettoyage des événements pygame...")
+    print("[INFO] Calibration terminée, nettoyage des événements pygame...")
     
     # S'assurer que pygame est toujours initialisé
     if not pygame.get_init():
@@ -251,7 +295,7 @@ def calibrate_joystick(joystick):
     # Vider complètement la file d'attente d'événements
     pygame.event.clear()
     
-    # Laisser pygame gérer les événements pendant un moment
+    # Laisser pygame gérer les événements
     for _ in range(20):
         pygame.event.pump()
         pygame.time.delay(10)

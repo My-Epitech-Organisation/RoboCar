@@ -6,9 +6,9 @@ Ce module fournit:
 - Des fonctions pour convertir ces entrées en commandes pour la voiture
 """
 
-import pygame
-import json
 import os
+import json
+import pygame
 from pynput import keyboard
 
 # Variables globales pour stocker l'état des touches
@@ -21,14 +21,14 @@ key_states = {
     'd': False,
     'z': False,
     's': False,
-    'c': False  # Ajout de la touche 'c' pour la calibration
+    'c': False  # Pour la calibration
 }
 
 
 def on_press(key):
     """Callback quand une touche est pressée."""
     try:
-        k = key.char.lower()  # Conversion en minuscule
+        k = key.char.lower()
         if k in key_states:
             key_states[k] = True
     except AttributeError:
@@ -46,7 +46,7 @@ def on_press(key):
 def on_release(key):
     """Callback quand une touche est relâchée."""
     try:
-        k = key.char.lower()  # Conversion en minuscule
+        k = key.char.lower()
         if k in key_states:
             key_states[k] = False
     except AttributeError:
@@ -79,7 +79,7 @@ def get_keyboard_input():
     steering = 0.0
     acceleration = 0.0
 
-    # Contrôles ZQSD explicites
+    # Contrôles ZQSD
     if key_states['q']:
         steering = -1.0  # Q = Gauche
     elif key_states['d']:
@@ -90,16 +90,16 @@ def get_keyboard_input():
     elif key_states['s']:
         acceleration = -1.0  # S = Reculer
 
-    # Contrôles flèches comme alternative
+    # Contrôles flèches
     if key_states['left']:
-        steering = -1.0  # Flèche gauche = Gauche
+        steering = -1.0
     elif key_states['right']:
-        steering = 1.0   # Flèche droite = Droite
+        steering = 1.0
 
     if key_states['up']:
-        acceleration = 1.0  # Flèche haut = Avancer
+        acceleration = 1.0
     elif key_states['down']:
-        acceleration = -1.0  # Flèche bas = Reculer
+        acceleration = -1.0
 
     return steering, acceleration
 
@@ -108,8 +108,11 @@ class JoystickCalibration:
     """Classe pour gérer la calibration du joystick."""
     
     def __init__(self):
-        self.calibration_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
-                                           "joystick_calibration.json")
+        """Initialise les données de calibration du joystick."""
+        self.calibration_file = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "joystick_calibration.json"
+        )
         self.calib_data = {
             "steering": {"min": -1.0, "max": 1.0},
             "acceleration": {"min": -1.0, "max": 1.0}
@@ -124,14 +127,14 @@ class JoystickCalibration:
                     self.calib_data = json.load(f)
                     print(f"[INFO] Calibration du joystick chargée: {self.calib_data}")
         except Exception as e:
-            print(f"[AVERTISSEMENT] Erreur lors du chargement de la calibration: {e}")
+            print(f"[AVERTISSEMENT] Erreur de chargement calibration: {e}")
             
     def save_calibration(self):
         """Enregistre les données de calibration dans un fichier."""
         try:
             with open(self.calibration_file, 'w') as f:
                 json.dump(self.calib_data, f, indent=4)
-                print(f"[INFO] Calibration du joystick enregistrée: {self.calib_data}")
+                print(f"[INFO] Calibration enregistrée: {self.calib_data}")
         except Exception as e:
             print(f"[ERREUR] Impossible de sauvegarder la calibration: {e}")
     
@@ -160,13 +163,13 @@ class JoystickCalibration:
             return axis_value / abs(min_val) if min_val != 0 else 0.0
 
 
-# Création d'une instance globale de calibration
+# Instance globale de calibration
 joystick_calibration = JoystickCalibration()
 
 
 def get_joystick_input(joystick):
     """
-    Lit les entrées du joystick et retourne les commandes correspondantes.
+    Lit les entrées du joystick et retourne les commandes.
 
     Args:
         joystick: Instance du joystick Pygame
@@ -177,7 +180,7 @@ def get_joystick_input(joystick):
     if joystick is None:
         return 0.0, 0.0
     
-    # Vérifier que le joystick est toujours initialisé et actif
+    # Vérifier que le joystick est initialisé
     try:
         if not joystick.get_init():
             try:
@@ -186,18 +189,17 @@ def get_joystick_input(joystick):
             except pygame.error:
                 return 0.0, 0.0
     except (pygame.error, AttributeError):
-        # Le joystick a été déconnecté ou est en état d'erreur
+        # Joystick déconnecté ou en erreur
         return 0.0, 0.0
 
     # Deadzone pour éviter les mouvements involontaires
     deadzone = 0.1
 
     try:
-        # Axe 0 (horizontal) pour la direction, axe 1 (vertical) pour l'accélération
+        # Axe 0 (horizontal) pour direction, axe 1 (vertical) pour accélération
         steering_axis = joystick.get_axis(0)
         accel_axis = joystick.get_axis(1)
     except (pygame.error, IndexError):
-        # En cas d'erreur lors de la lecture des axes
         print("[ERREUR] Impossible de lire les axes du joystick")
         return 0.0, 0.0
 
@@ -209,7 +211,8 @@ def get_joystick_input(joystick):
 
     # Application de la calibration
     steering = joystick_calibration.apply_calibration(steering_axis, "steering")
-    accel = -joystick_calibration.apply_calibration(accel_axis, "acceleration")  # Inversion maintenue
+    # Inversion pour que vers le haut = avancer
+    accel = -joystick_calibration.apply_calibration(accel_axis, "acceleration")
 
     return steering, accel
 
@@ -219,16 +222,15 @@ def parse_user_input(joystick=None):
     Lit les entrées utilisateur et les convertit en commandes de direction.
 
     Args:
-        joystick: Instance du joystick Pygame (None pour utiliser le clavier)
+        joystick: Instance du joystick Pygame (None pour clavier)
 
     Returns:
         tuple: (steering, acceleration) - Valeurs entre -1.0 et 1.0
     """
-    # Par défaut, utiliser les entrées clavier
+    # Lire les entrées clavier
     steering, acceleration = get_keyboard_input()
 
-    # Si un joystick est disponible et que le clavier n'est pas utilisé,
-    # utiliser les entrées du joystick
+    # Si joystick disponible et clavier non utilisé, utiliser le joystick
     if joystick is not None and steering == 0.0 and acceleration == 0.0:
         steering, acceleration = get_joystick_input(joystick)
 
