@@ -207,11 +207,10 @@ class JoystickCalibratorUI:
             pygame.display.flip()
             clock.tick(30)
         
-        # Nettoyage - seulement fermer la fenêtre, pas quitter pygame
+        # Nettoyage - ne pas fermer la fenêtre avec set_mode mais avec flip et delay
         if pygame.display.get_init():
-            pygame.display.set_mode((1, 1))  # Réduire à une petite fenêtre
             pygame.display.flip()
-            pygame.display.iconify()  # Minimiser la fenêtre
+            pygame.time.delay(100)  # Petit délai pour permettre à pygame de traiter
         
         return True
 
@@ -230,10 +229,31 @@ def calibrate_joystick(joystick):
         print("[ERREUR] Aucun joystick à calibrer")
         return False
     
-    # Sauvegarder l'état actuel de pygame
-    was_initialized = pygame.get_init()
+    # Sauvegarder l'ID du joystick pour vérification après calibration
+    try:
+        joystick_name = joystick.get_name()
+        joystick_id = joystick.get_id()
+    except (pygame.error, AttributeError):
+        print("[AVERTISSEMENT] Impossible d'obtenir les informations du joystick")
+        joystick_name = "Unknown"
+        joystick_id = -1
     
+    # Lancer la calibration
     calibrator = JoystickCalibratorUI(joystick)
     result = calibrator.run()
+    
+    print(f"[INFO] Calibration terminée, nettoyage des événements pygame...")
+    
+    # S'assurer que pygame est toujours initialisé
+    if not pygame.get_init():
+        pygame.init()
+    
+    # Vider complètement la file d'attente d'événements
+    pygame.event.clear()
+    
+    # Laisser pygame gérer les événements pendant un moment
+    for _ in range(20):
+        pygame.event.pump()
+        pygame.time.delay(10)
     
     return result

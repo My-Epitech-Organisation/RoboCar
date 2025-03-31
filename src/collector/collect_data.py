@@ -111,6 +111,44 @@ def init_joystick(debug_mode=False):
     return joystick
 
 
+def reinitialize_joystick(debug_mode=False):
+    """
+    Réinitialise complètement le joystick.
+    Utile après la calibration.
+    """
+    # Assurez-vous que pygame est initialisé
+    if not pygame.get_init():
+        pygame.init()
+    
+    # Réinitialiser complètement le sous-système de joystick
+    pygame.joystick.quit()
+    # Bref délai pour permettre au système de se stabiliser
+    pygame.time.delay(100)
+    pygame.joystick.init()
+    
+    joystick_count = pygame.joystick.get_count()
+    joystick = None
+    
+    if joystick_count > 0:
+        try:
+            joystick = pygame.joystick.Joystick(0)
+            joystick.init()
+            print(f"[INFO] Joystick réinitialisé: {joystick.get_name()}")
+            
+            # Test du joystick réinitialisé
+            if debug_mode:
+                print(f"[DEBUG] Nombre d'axes: {joystick.get_numaxes()}")
+                for i in range(joystick.get_numaxes()):
+                    print(f"  Axe {i}: {joystick.get_axis(i):.3f}")
+        except pygame.error as e:
+            print(f"[ERREUR] Impossible de réinitialiser le joystick: {e}")
+            return None
+    else:
+        print("[INFO] Aucun joystick détecté après réinitialisation")
+        
+    return joystick
+
+
 def setup_unity_environment(unity_env_path, engine_config, project_root):
     """Configure et initialise l'environnement Unity."""
     agent_config_path = os.path.join(project_root, "config", "agent_config.json")
@@ -185,44 +223,67 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
         
         # Variable pour suivre l'état de la touche 'c'
         calibration_requested = False
-
+        # Variable pour suivre si on est dans l'état post-calibration
+        post_calibration = False
+        # Compteur pour différer la lecture des inputs joystick après calibration
+        post_calibration_counter = 0
+        
         while True:
             # Vérifier si pygame est toujours initialisé, sinon le réinitialiser
             if not pygame.get_init():
-                print("[INFO] Réinitialisation de pygame après la calibration...")
+                print("[INFO] Réinitialisation de pygame...")
                 pygame.init()
-                if joystick and not joystick.get_init():
-                    joystick.init()
-
+            
             # Traitement des événements Pygame pour le joystick
             pygame.event.pump()
 
-            # Vérifier si la touche 'c' est pressée pour la calibration
+            # Gestion de la calibration du joystick
             if key_states['c'] and not calibration_requested:
                 calibration_requested = True
                 print("[INFO] Calibration du joystick demandée...")
                 
-                # Pause de la collecte de données
                 if joystick:
                     print("[INFO] Lancement de la calibration...")
                     calibrate_joystick(joystick)
-                    print("[INFO] Calibration terminée, reprise de la collecte.")
+                    print("[INFO] Calibration terminée, réinitialisation du joystick...")
                     
-                    # S'assurer que pygame est toujours initialisé après la calibration
-                    if not pygame.get_init():
-                        print("[INFO] Réinitialisation de pygame après la calibration...")
-                        pygame.init()
-                        if not joystick.get_init():
-                            joystick.init()
+                    # Complètement réinitialiser pygame pour s'assurer que tout fonctionne
+                    pygame.quit()
+                    pygame.init()
+                    
+                    # Réinitialisation complète du joystick
+                    joystick = reinitialize_joystick(debug_joystick)
+                    
+                    # Marquer comme post-calibration pour stabiliser le système
+                    post_calibration = True
+                    post_calibration_counter = 0
+                    
+                    print("[INFO] Reprise de la collecte avec joystick réinitialisé.")
                 else:
                     print("[ERREUR] Aucun joystick détecté pour la calibration.")
                 
             # Réinitialiser l'état de la demande de calibration quand 'c' est relâché
             if not key_states['c']:
                 calibration_requested = False
+            
+            # Si nous sommes dans l'état post-calibration, attendre un peu
+            if post_calibration:
+                post_calibration_counter += 1
+                if post_calibration_counter > 10:  # Attendre quelques frames
+                    post_calibration = False
+                    # Vérifier l'état du joystick après stabilisation
+                    if joystick and debug_joystick:
+                        print("[DEBUG] État du joystick après stabilisation:")
+                        for i in range(joystick.get_numaxes()):
+                            print(f"  Axe {i}: {joystick.get_axis(i):.3f}")
 
             # Récupération des inputs utilisateur
-            steering, accel = parse_user_input(joystick)
+            if post_calibration:
+                # Durant l'état post-calibration, utiliser des valeurs neutres
+                steering, accel = 0.0, 0.0
+            else:
+                # Sinon, obtenir les inputs normalement
+                steering, accel = parse_user_input(joystick)
 
             # Affichage des valeurs du joystick en mode debug
             if debug_joystick and joystick and debug_count % 30 == 0:

@@ -176,13 +176,30 @@ def get_joystick_input(joystick):
     """
     if joystick is None:
         return 0.0, 0.0
+    
+    # Vérifier que le joystick est toujours initialisé et actif
+    try:
+        if not joystick.get_init():
+            try:
+                joystick.init()
+                print("[INFO] Joystick réinitialisé automatiquement")
+            except pygame.error:
+                return 0.0, 0.0
+    except (pygame.error, AttributeError):
+        # Le joystick a été déconnecté ou est en état d'erreur
+        return 0.0, 0.0
 
     # Deadzone pour éviter les mouvements involontaires
     deadzone = 0.1
 
-    # Axe 0 (horizontal) pour la direction, axe 1 (vertical) pour l'accélération
-    steering_axis = joystick.get_axis(0)
-    accel_axis = joystick.get_axis(1)
+    try:
+        # Axe 0 (horizontal) pour la direction, axe 1 (vertical) pour l'accélération
+        steering_axis = joystick.get_axis(0)
+        accel_axis = joystick.get_axis(1)
+    except (pygame.error, IndexError):
+        # En cas d'erreur lors de la lecture des axes
+        print("[ERREUR] Impossible de lire les axes du joystick")
+        return 0.0, 0.0
 
     # Application de la deadzone
     if abs(steering_axis) < deadzone:
