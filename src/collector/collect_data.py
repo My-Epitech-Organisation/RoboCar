@@ -23,7 +23,8 @@ from mlagents_envs.side_channel.engine_configuration_channel import (
     EngineConfigurationChannel
 )
 
-from utils_collector import parse_user_input, setup_keyboard_listener
+from utils_collector import parse_user_input, setup_keyboard_listener, key_states
+from joystick_calibrator import calibrate_joystick
 
 
 def parse_arguments():
@@ -33,6 +34,11 @@ def parse_arguments():
         '--debug-joystick',
         action='store_true',
         help='Activer le débogage du joystick'
+    )
+    parser.add_argument(
+        '--calibrate',
+        action='store_true',
+        help='Lancer la calibration du joystick au démarrage'
     )
     return parser.parse_args()
 
@@ -172,13 +178,48 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
         print("[INFO] Observations récupérées, démarrage de la boucle principale")
         print("[INFO] Collecte de données en cours. Appuyez sur Ctrl+C pour arrêter.")
         print("[INFO] Contrôles: Flèches directionnelles ou ZQSD pour diriger la voiture")
+        print("[INFO] Appuyez sur 'c' pour calibrer le joystick")
 
         frame_count = 0
         debug_count = 0
+        
+        # Variable pour suivre l'état de la touche 'c'
+        calibration_requested = False
 
         while True:
+            # Vérifier si pygame est toujours initialisé, sinon le réinitialiser
+            if not pygame.get_init():
+                print("[INFO] Réinitialisation de pygame après la calibration...")
+                pygame.init()
+                if joystick and not joystick.get_init():
+                    joystick.init()
+
             # Traitement des événements Pygame pour le joystick
             pygame.event.pump()
+
+            # Vérifier si la touche 'c' est pressée pour la calibration
+            if key_states['c'] and not calibration_requested:
+                calibration_requested = True
+                print("[INFO] Calibration du joystick demandée...")
+                
+                # Pause de la collecte de données
+                if joystick:
+                    print("[INFO] Lancement de la calibration...")
+                    calibrate_joystick(joystick)
+                    print("[INFO] Calibration terminée, reprise de la collecte.")
+                    
+                    # S'assurer que pygame est toujours initialisé après la calibration
+                    if not pygame.get_init():
+                        print("[INFO] Réinitialisation de pygame après la calibration...")
+                        pygame.init()
+                        if not joystick.get_init():
+                            joystick.init()
+                else:
+                    print("[ERREUR] Aucun joystick détecté pour la calibration.")
+                
+            # Réinitialiser l'état de la demande de calibration quand 'c' est relâché
+            if not key_states['c']:
+                calibration_requested = False
 
             # Récupération des inputs utilisateur
             steering, accel = parse_user_input(joystick)
@@ -252,6 +293,11 @@ def main():
 
     # Initialisation du joystick
     joystick = init_joystick(args.debug_joystick)
+    
+    # Lancer la calibration au démarrage si demandé
+    if args.calibrate and joystick:
+        print("[INFO] Calibration du joystick au démarrage...")
+        calibrate_joystick(joystick)
 
     try:
         # Configuration de l'environnement Unity
