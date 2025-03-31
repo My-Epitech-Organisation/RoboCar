@@ -40,6 +40,11 @@ def parse_arguments():
         action='store_true',
         help='Launch joystick calibration at startup'
     )
+    parser.add_argument(
+        '--debug-obs',
+        action='store_true',
+        help='Enable detailed observation debugging'
+    )
     return parser.parse_args()
 
 
@@ -210,7 +215,7 @@ def handle_joystick_calibration(joystick, debug_joystick):
     return joystick, True
 
 
-def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=False):
+def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=False, debug_obs=False):
     """Execute main data collection loop."""
     fieldnames = [
         "timestamp", "steering_input", "acceleration_input", "raycasts", "speed"
@@ -227,11 +232,45 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
         print("[INFO] Controls: Arrow keys or WASD/ZQSD")
         print("[INFO] Press 'c' to calibrate joystick")
 
+        # Enhanced debug information about observations
+        print("\n[INFO] Observation structure details:")
+        for i, obs in enumerate(decision_steps.obs):
+            print(f"  Observation {i}: shape={obs.shape}, type={type(obs)}")
+            if debug_obs:
+                try:
+                    if obs.shape[1] <= 10:  # Only print if not too large
+                        print(f"    Content: {obs[0]}")
+                    else:
+                        print(f"    First values: {obs[0][:5]}")
+                        print(f"    Non-zero values: {np.count_nonzero(obs[0])}/{obs[0].size}")
+                except Exception as e:
+                    print(f"    Error accessing content: {e}")
+        
+        # Debug agent information
+        print("\n[INFO] Agent information:")
+        try:
+            print(f"  Agent count: {len(decision_steps)}")
+            print(f"  Agent IDs: {decision_steps.agent_id}")
+            
+            # Check if we have any additional data
+            if hasattr(decision_steps, 'reward'):
+                print(f"  Rewards: {decision_steps.reward}")
+            if hasattr(decision_steps, 'action_mask'):
+                print(f"  Action masks available: {len(decision_steps.action_mask) > 0}")
+            
+            # Check for additional attributes that might contain position data
+            print(f"  Available attributes: {dir(decision_steps)}")
+        except Exception as e:
+            print(f"  Error inspecting decision_steps: {e}")
+
         frame_count = 0
         debug_count = 0
         calibration_requested = False
         post_calibration = False
         post_calibration_counter = 0
+        
+        # Store observation stats to detect changes
+        last_nonzero_counts = [0] * len(decision_steps.obs)
 
         while True:
             if not pygame.get_init():
@@ -279,20 +318,77 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
                 )
             debug_count += 1
 
-            # Read observations
+            # Enhanced observation reading with debug
             raycasts = decision_steps.obs[0][0].tolist()
             speed = 0.0
+            position_x, position_y, position_z = 0.0, 0.0, 0.0
+            
+            # Try multiple ways to access observation data
+            try:
+                # Method 1: Standard indexing as before
+                if len(decision_steps.obs) > 1:
+                    speed = float(decision_steps.obs[1][0][0])
+                
+                # Try to find position data in all observations
+                for i in range(1, len(decision_steps.obs)):
+                    obs = decision_steps.obs[i][0]
+                    nonzero = np.count_nonzero(obs)
+                    
+                    # Log if nonzero count changes (might indicate data)
+                    if nonzero != last_nonzero_counts[i] and debug_obs and debug_count % 30 == 0:
+                        last_nonzero_counts[i] = nonzero
+                        print(f"\n[DEBUG] Observation {i} has {nonzero} non-zero values: {obs}")
+                    
+                    # If observation has exactly 3 values, try it as position
+                    if obs.size == 3 and any(v != 0 for v in obs):
+                        position_x, position_y, position_z = float(obs[0]), float(obs[1]), float(obs[2])
+                        if debug_obs and debug_count % 30 == 0:
+                            print(f"[DEBUG] Found probable position in observation {i}: {obs}")
+                    
+                    # If observation is larger and we haven't found position yet
+                    elif obs.size > 3 and all(v == 0 for v in [position_x, position_y, position_z]):
+                        # Find first 3 consecutive non-zero values as potential position
+                        for j in range(len(obs) - 2):
+                            if any(obs[j:j+3] != 0):
+                                position_x, position_y, position_z = float(obs[j]), float(obs[j+1]), float(obs[j+2])
+                                if debug_obs and debug_count % 30 == 0:
+                                    print(f"[DEBUG] Found potential position at index {j} in observation {i}")
+                                break
+                
+                # Method 2: Check if there are other attributes in decision_steps
+                if hasattr(decision_steps, 'position') and all(v == 0 for v in [position_x, position_y, position_z]):
+                    try:
+                        pos = decision_steps.position[0]
+                        position_x, position_y, position_z = float(pos[0]), float(pos[1]), float(pos[2])
+                        if debug_obs and debug_count % 30 == 0:
+                            print("[DEBUG] Found position in decision_steps.position")
+                    except Exception as e:
+                        if debug_obs and debug_count % 30 == 0:
+                            print(f"[DEBUG] Error accessing decision_steps.position: {e}")
+            
+            except Exception as e:
+                if debug_obs and debug_count % 30 == 0:
+                    print(f"[ERROR] Exception while accessing observations: {e}")
+            
+            debug_count += 1
 
-            if len(decision_steps.obs) > 1:
-                speed = float(decision_steps.obs[1][0][0])
-
-            # Periodic display
+            # Periodic display - Enhanced with detailed debug
             frame_count += 1
             if frame_count % 10 == 0:
-                print(
-                    f"Commands: steering={steering:.2f}, "
-                    f"acceleration={accel:.2f}, speed={speed:.2f}"
-                )
+                print("\n[INFO] Simulation state:")
+                print(f"  Inputs: steering={steering:.2f}, acceleration={accel:.2f}")
+                print(f"  Observations: speed={speed:.2f}, position=({position_x:.2f}, {position_y:.2f}, {position_z:.2f})")
+                
+                # If everything is still zero and we're debugging
+                if debug_obs and all(v == 0 for v in [speed, position_x, position_y, position_z]):
+                    print("\n[DEBUG] All observations are still zero. Raw observation data:")
+                    for i, obs in enumerate(decision_steps.obs):
+                        print(f"  Obs {i} shape: {obs.shape}")
+                        if obs[0].size <= 20:  # Only print if not too large
+                            print(f"    Data: {obs[0]}")
+                        else:
+                            print(f"    First 10 values: {obs[0][:10]}")
+                            print(f"    Non-zero count: {np.count_nonzero(obs[0])}")
 
             # Record data
             writer.writerow({
@@ -352,9 +448,10 @@ def main():
             behavior_name, _, output_file = setup_data_collection(env, project_root)
 
             try:
-                # Data collection loop
+                # Data collection loop with debug option
                 collect_data_loop(
-                    env, behavior_name, output_file, joystick, args.debug_joystick
+                    env, behavior_name, output_file, joystick, 
+                    args.debug_joystick, args.debug_obs
                 )
             except KeyboardInterrupt:
                 print("[INFO] Collection interrupted by user.")
