@@ -127,8 +127,10 @@ def reinitialize_joystick():
 
 def setup_unity_environment(unity_env_path, engine_config, project_root):
     """Configure and initialize Unity environment."""
-    agent_config_path = os.path.join(project_root, "config", "agent_config.json")
-    print(f"[INFO] Agent configuration retrieved from {agent_config_path}")
+    agent_config_path = os.path.join(
+        project_root, "config", "agent_config.json"
+    )
+    print(f"[INFO] Agent configuration: {agent_config_path}")
 
     print("[INFO] Launching and connecting to Unity environment...")
     env = UnityEnvironment(
@@ -146,6 +148,25 @@ def setup_unity_environment(unity_env_path, engine_config, project_root):
     print("[INFO] Unity environment successfully initialized!")
 
     return env, agent_config_path
+
+
+def get_num_rays_from_config(project_root):
+    """Get number of rays from agent configuration."""
+    num_rays = 10  # Default value
+    agent_config_path = os.path.join(
+        project_root, "config", "agent_config.json"
+    )
+    try:
+        with open(agent_config_path, "r") as f:
+            agent_config = json.load(f)
+            if "agents" in agent_config and len(agent_config["agents"]) > 0:
+                num_rays = agent_config["agents"][0].get("nbRay", 10)
+                print(f"[INFO] Number of rays from config: {num_rays}")
+    except Exception as e:
+        print(f"[WARNING] Could not load ray count from config: {e}")
+        print(f"[WARNING] Using default ray count: {num_rays}")
+
+    return num_rays
 
 
 def setup_data_collection(env, project_root):
@@ -167,18 +188,7 @@ def setup_data_collection(env, project_root):
         f"{behavior_spec.action_spec.continuous_size} dimensions"
     )
 
-    # Load agent configuration to get number of rays
-    num_rays = 10  # Default value
-    agent_config_path = os.path.join(project_root, "config", "agent_config.json")
-    try:
-        with open(agent_config_path, "r") as f:
-            agent_config = json.load(f)
-            if "agents" in agent_config and len(agent_config["agents"]) > 0:
-                num_rays = agent_config["agents"][0].get("nbRay", 10)
-                print(f"[INFO] Number of rays from config: {num_rays}")
-    except Exception as e:
-        print(f"[WARNING] Could not load ray count from config: {e}")
-        print(f"[WARNING] Using default ray count: {num_rays}")
+    num_rays = get_num_rays_from_config(project_root)
 
     output_dir = os.path.join(project_root, "data", "raw")
     os.makedirs(output_dir, exist_ok=True)
@@ -207,27 +217,46 @@ def handle_joystick_calibration(joystick):
     return joystick, True
 
 
+def process_observations(obs_array, num_rays):
+    """Extract and process observations from observation array."""
+    raycasts = obs_array[:num_rays].tolist()
+
+    try:
+        speed = float(obs_array[-5]) if len(obs_array) >= 5 else 0.0
+        obs_steering = float(obs_array[-4]) if len(obs_array) >= 4 else 0.0
+        position_x = float(obs_array[-3]) if len(obs_array) >= 3 else 0.0
+        position_y = float(obs_array[-2]) if len(obs_array) >= 2 else 0.0
+        position_z = float(obs_array[-1]) if len(obs_array) >= 1 else 0.0
+    except IndexError:
+        speed, obs_steering = 0.0, 0.0
+        position_x, position_y, position_z = 0.0, 0.0, 0.0
+
+    return raycasts, speed, obs_steering, position_x, position_y, position_z
+
+
+def display_state_info(frame_count, steering, accel, speed, obs_steering,
+                       position_x, position_y, position_z, raycasts):
+    """Display current simulation state periodically."""
+    if frame_count % 10 == 0:
+        print("\n[INFO] Simulation state:")
+        print(f"  User inputs: steering={steering:.2f}, "
+              f"acceleration={accel:.2f}")
+        print(f"  Observations:")
+        print(f"    Speed: {speed:.2f}")
+        print(f"    Car steering: {obs_steering:.2f}")
+        print(f"    Position: ({position_x:.2f}, {position_y:.2f}, "
+              f"{position_z:.2f})")
+        print(f"    Raycasts: {len(raycasts)} rays, "
+              f"range: {min(raycasts):.2f} to {max(raycasts):.2f}")
+
+
 def collect_data_loop(env, behavior_name, output_file, joystick):
     """Execute main data collection loop."""
-    # Get project root to load agent configuration
     project_root = get_project_root()
-    
-    # Get number of rays from agent configuration
-    num_rays = 10  # Default value
-    agent_config_path = os.path.join(project_root, "config", "agent_config.json")
-    try:
-        with open(agent_config_path, "r") as f:
-            agent_config = json.load(f)
-            if "agents" in agent_config and len(agent_config["agents"]) > 0:
-                num_rays = agent_config["agents"][0].get("nbRay", 10)
-                print(f"[INFO] Number of rays from config: {num_rays}")
-    except Exception as e:
-        print(f"[WARNING] Could not load ray count from config: {e}")
-        print(f"[WARNING] Using default ray count: {num_rays}")
-    
-    # Define fields to collect
+    num_rays = get_num_rays_from_config(project_root)
+
     fieldnames = [
-        "timestamp", "steering_input", "acceleration_input", 
+        "timestamp", "steering_input", "acceleration_input",
         "raycasts", "speed", "steering", "position_x", "position_y", "position_z"
     ]
 
@@ -242,11 +271,10 @@ def collect_data_loop(env, behavior_name, output_file, joystick):
         print("[INFO] Controls: Arrow keys or WASD/ZQSD")
         print("[INFO] Press 'c' to calibrate joystick")
 
-        # Basic observation info
         print("\n[INFO] Observation structure details:")
         for i, obs in enumerate(decision_steps.obs):
             print(f"  Observation {i}: shape={obs.shape}")
-        
+
         print("\n[INFO] Agent information:")
         print(f"  Agent count: {len(decision_steps)}")
 
@@ -262,7 +290,7 @@ def collect_data_loop(env, behavior_name, output_file, joystick):
 
             pygame.event.pump()
 
-            # Calibration management
+            # Handle calibration
             if key_states['c'] and not calibration_requested:
                 calibration_requested = True
                 print("[INFO] Joystick calibration requested...")
@@ -284,35 +312,20 @@ def collect_data_loop(env, behavior_name, output_file, joystick):
             else:
                 steering, accel = parse_user_input(joystick)
 
-            # Get the observation array from the first agent
+            # Process observations
             obs_array = decision_steps.obs[0][0]
-            
-            # Extract observations using the correct indexing pattern
-            raycasts = obs_array[:num_rays].tolist()
-            
-            # Extract other observations, with fallback to zero if not available
-            try:
-                speed = float(obs_array[-5]) if len(obs_array) >= 5 else 0.0
-                obs_steering = float(obs_array[-4]) if len(obs_array) >= 4 else 0.0
-                position_x = float(obs_array[-3]) if len(obs_array) >= 3 else 0.0
-                position_y = float(obs_array[-2]) if len(obs_array) >= 2 else 0.0
-                position_z = float(obs_array[-1]) if len(obs_array) >= 1 else 0.0
-            except IndexError:
-                speed, obs_steering = 0.0, 0.0
-                position_x, position_y, position_z = 0.0, 0.0, 0.0
+            raycasts, speed, obs_steering, position_x, position_y, position_z = (
+                process_observations(obs_array, num_rays)
+            )
 
-            # Display current state periodically
+            # Display information periodically
             frame_count += 1
-            if frame_count % 10 == 0:
-                print("\n[INFO] Simulation state:")
-                print(f"  User inputs: steering={steering:.2f}, acceleration={accel:.2f}")
-                print(f"  Observations:")
-                print(f"    Speed: {speed:.2f}")
-                print(f"    Car steering: {obs_steering:.2f}")
-                print(f"    Position: ({position_x:.2f}, {position_y:.2f}, {position_z:.2f})")
-                print(f"    Raycasts: {len(raycasts)} rays, range: {min(raycasts):.2f} to {max(raycasts):.2f}")
+            display_state_info(
+                frame_count, steering, accel, speed, obs_steering,
+                position_x, position_y, position_z, raycasts
+            )
 
-            # Record all data to CSV
+            # Record data
             writer.writerow({
                 "timestamp": time.time(),
                 "steering_input": steering,
@@ -351,7 +364,7 @@ def main():
         time_scale=raycast_config["time_scale"]
     )
 
-    # Initialize global keyboard listener
+    # Initialize keyboard listener
     print("[INFO] Initializing global keyboard listener")
     keyboard_listener = setup_keyboard_listener()
     keyboard_listener.start()
@@ -367,14 +380,18 @@ def main():
 
     try:
         # Configure Unity environment
-        env, _ = setup_unity_environment(unity_env_path, engine_config, project_root)
+        env, _ = setup_unity_environment(
+            unity_env_path, engine_config, project_root
+        )
 
         try:
-            # Configure data collection with num_rays parameter
-            behavior_name, _, output_file, num_rays = setup_data_collection(env, project_root)
+            # Configure data collection
+            behavior_name, _, output_file, num_rays = setup_data_collection(
+                env, project_root
+            )
 
             try:
-                # Data collection loop without debug options
+                # Data collection loop
                 collect_data_loop(env, behavior_name, output_file, joystick)
             except KeyboardInterrupt:
                 print("[INFO] Collection interrupted by user.")
