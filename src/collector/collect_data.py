@@ -31,19 +31,9 @@ def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description='Robocar Data Collector')
     parser.add_argument(
-        '--debug-joystick',
-        action='store_true',
-        help='Enable joystick debugging'
-    )
-    parser.add_argument(
         '--calibrate',
         action='store_true',
         help='Launch joystick calibration at startup'
-    )
-    parser.add_argument(
-        '--debug-obs',
-        action='store_true',
-        help='Enable detailed observation debugging'
     )
     return parser.parse_args()
 
@@ -93,7 +83,7 @@ def check_unity_executable(project_root):
     return unity_env_path
 
 
-def init_joystick(debug_mode=False):
+def init_joystick():
     """Initialize and configure joystick."""
     pygame.init()
     joystick_count = pygame.joystick.get_count()
@@ -103,19 +93,13 @@ def init_joystick(debug_mode=False):
         joystick = pygame.joystick.Joystick(0)
         joystick.init()
         print(f"[INFO] Joystick detected: {joystick.get_name()}")
-
-        if debug_mode:
-            print(f"[DEBUG] Number of axes: {joystick.get_numaxes()}")
-            print(f"[DEBUG] Number of buttons: {joystick.get_numbuttons()}")
-            print(f"[DEBUG] Number of trackballs: {joystick.get_numballs()}")
-            print(f"[DEBUG] Number of hats: {joystick.get_numhats()}")
     else:
         print("[INFO] No joystick detected, using keyboard only")
 
     return joystick
 
 
-def reinitialize_joystick(debug_mode=False):
+def reinitialize_joystick():
     """Completely reinitialize joystick after calibration."""
     if not pygame.get_init():
         pygame.init()
@@ -132,11 +116,6 @@ def reinitialize_joystick(debug_mode=False):
             joystick = pygame.joystick.Joystick(0)
             joystick.init()
             print(f"[INFO] Joystick reinitialized: {joystick.get_name()}")
-
-            if debug_mode:
-                print(f"[DEBUG] Number of axes: {joystick.get_numaxes()}")
-                for i in range(joystick.get_numaxes()):
-                    print(f"  Axis {i}: {joystick.get_axis(i):.3f}")
         except pygame.error as e:
             print(f"[ERROR] Unable to reinitialize joystick: {e}")
             return None
@@ -209,7 +188,7 @@ def setup_data_collection(env, project_root):
     return behavior_name, behavior_spec, output_file, num_rays
 
 
-def handle_joystick_calibration(joystick, debug_joystick):
+def handle_joystick_calibration(joystick):
     """Handle joystick calibration process."""
     if not joystick:
         print("[ERROR] No joystick detected for calibration.")
@@ -222,13 +201,13 @@ def handle_joystick_calibration(joystick, debug_joystick):
     pygame.quit()
     pygame.init()
 
-    joystick = reinitialize_joystick(debug_joystick)
+    joystick = reinitialize_joystick()
     print("[INFO] Resuming collection with reinitialized joystick.")
 
     return joystick, True
 
 
-def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=False, debug_obs=False):
+def collect_data_loop(env, behavior_name, output_file, joystick):
     """Execute main data collection loop."""
     # Get project root to load agent configuration
     project_root = get_project_root()
@@ -246,7 +225,7 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
         print(f"[WARNING] Could not load ray count from config: {e}")
         print(f"[WARNING] Using default ray count: {num_rays}")
     
-    # Update fieldnames to include all observations
+    # Define fields to collect
     fieldnames = [
         "timestamp", "steering_input", "acceleration_input", 
         "raycasts", "speed", "steering", "position_x", "position_y", "position_z"
@@ -263,30 +242,15 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
         print("[INFO] Controls: Arrow keys or WASD/ZQSD")
         print("[INFO] Press 'c' to calibrate joystick")
 
-        # Enhanced debug information about observations
+        # Basic observation info
         print("\n[INFO] Observation structure details:")
         for i, obs in enumerate(decision_steps.obs):
-            print(f"  Observation {i}: shape={obs.shape}, type={type(obs)}")
-            if debug_obs:
-                try:
-                    if obs.shape[1] <= 10:  # Only print if not too large
-                        print(f"    Content: {obs[0]}")
-                    else:
-                        print(f"    First values: {obs[0][:5]}")
-                        print(f"    Non-zero values: {np.count_nonzero(obs[0])}/{obs[0].size}")
-                except Exception as e:
-                    print(f"    Error accessing content: {e}")
+            print(f"  Observation {i}: shape={obs.shape}")
         
-        # Debug agent information
         print("\n[INFO] Agent information:")
-        try:
-            print(f"  Agent count: {len(decision_steps)}")
-            print(f"  Agent IDs: {decision_steps.agent_id}")
-        except Exception as e:
-            print(f"  Error inspecting decision_steps: {e}")
+        print(f"  Agent count: {len(decision_steps)}")
 
         frame_count = 0
-        debug_count = 0
         calibration_requested = False
         post_calibration = False
         post_calibration_counter = 0
@@ -302,9 +266,7 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
             if key_states['c'] and not calibration_requested:
                 calibration_requested = True
                 print("[INFO] Joystick calibration requested...")
-                joystick, post_calibration = handle_joystick_calibration(
-                    joystick, debug_joystick
-                )
+                joystick, post_calibration = handle_joystick_calibration(joystick)
                 post_calibration_counter = 0
 
             if not key_states['c']:
@@ -315,27 +277,12 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
                 post_calibration_counter += 1
                 if post_calibration_counter > 10:
                     post_calibration = False
-                    if joystick and debug_joystick:
-                        print("[DEBUG] Joystick state after stabilization:")
-                        for i in range(joystick.get_numaxes()):
-                            print(f"  Axis {i}: {joystick.get_axis(i):.3f}")
 
             # Get user inputs
             if post_calibration:
                 steering, accel = 0.0, 0.0
             else:
                 steering, accel = parse_user_input(joystick)
-
-            # Display joystick values in debug mode
-            if debug_joystick and joystick and debug_count % 30 == 0:
-                print("\n[DEBUG JOYSTICK] Raw axis values:")
-                for i in range(joystick.get_numaxes()):
-                    print(f"  Axis {i}: {joystick.get_axis(i):.3f}")
-                print(
-                    f"[DEBUG] Steering: {steering:.3f}, "
-                    f"Acceleration: {accel:.3f}"
-                )
-            debug_count += 1
 
             # Get the observation array from the first agent
             obs_array = decision_steps.obs[0][0]
@@ -350,14 +297,11 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
                 position_x = float(obs_array[-3]) if len(obs_array) >= 3 else 0.0
                 position_y = float(obs_array[-2]) if len(obs_array) >= 2 else 0.0
                 position_z = float(obs_array[-1]) if len(obs_array) >= 1 else 0.0
-            except IndexError as e:
-                if debug_obs and debug_count % 30 == 0:
-                    print(f"[ERROR] Index error accessing observations: {e}")
-                    print(f"[ERROR] Observation array length: {len(obs_array)}")
+            except IndexError:
                 speed, obs_steering = 0.0, 0.0
                 position_x, position_y, position_z = 0.0, 0.0, 0.0
 
-            # Periodic display with all observation values
+            # Display current state periodically
             frame_count += 1
             if frame_count % 10 == 0:
                 print("\n[INFO] Simulation state:")
@@ -367,11 +311,6 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
                 print(f"    Car steering: {obs_steering:.2f}")
                 print(f"    Position: ({position_x:.2f}, {position_y:.2f}, {position_z:.2f})")
                 print(f"    Raycasts: {len(raycasts)} rays, range: {min(raycasts):.2f} to {max(raycasts):.2f}")
-                
-                if debug_obs and frame_count % 30 == 0:
-                    print(f"    Raycast details: {raycasts}")
-                    print(f"    Observation array shape: {obs_array.shape}")
-                    print(f"    Observation array tail: {obs_array[-5:] if len(obs_array) >= 5 else obs_array}")
 
             # Record all data to CSV
             writer.writerow({
@@ -419,7 +358,7 @@ def main():
     print("[INFO] Keyboard listener started - arrows or WASD/ZQSD")
 
     # Initialize joystick
-    joystick = init_joystick(args.debug_joystick)
+    joystick = init_joystick()
 
     # Calibrate at startup if requested
     if args.calibrate and joystick:
@@ -435,11 +374,8 @@ def main():
             behavior_name, _, output_file, num_rays = setup_data_collection(env, project_root)
 
             try:
-                # Data collection loop with debug option
-                collect_data_loop(
-                    env, behavior_name, output_file, joystick, 
-                    args.debug_joystick, args.debug_obs
-                )
+                # Data collection loop without debug options
+                collect_data_loop(env, behavior_name, output_file, joystick)
             except KeyboardInterrupt:
                 print("[INFO] Collection interrupted by user.")
             except Exception as e:
