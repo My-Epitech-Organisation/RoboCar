@@ -114,20 +114,20 @@ def reinitialize_joystick(debug_mode=False):
     """Réinitialise complètement le joystick après calibration."""
     if not pygame.get_init():
         pygame.init()
-    
+
     pygame.joystick.quit()
     pygame.time.delay(100)
     pygame.joystick.init()
-    
+
     joystick_count = pygame.joystick.get_count()
     joystick = None
-    
+
     if joystick_count > 0:
         try:
             joystick = pygame.joystick.Joystick(0)
             joystick.init()
             print(f"[INFO] Joystick réinitialisé: {joystick.get_name()}")
-            
+
             if debug_mode:
                 print(f"[DEBUG] Nombre d'axes: {joystick.get_numaxes()}")
                 for i in range(joystick.get_numaxes()):
@@ -137,7 +137,7 @@ def reinitialize_joystick(debug_mode=False):
             return None
     else:
         print("[INFO] Aucun joystick détecté après réinitialisation")
-        
+
     return joystick
 
 
@@ -196,17 +196,17 @@ def handle_joystick_calibration(joystick, debug_joystick):
     if not joystick:
         print("[ERREUR] Aucun joystick détecté pour la calibration.")
         return joystick, False
-    
+
     print("[INFO] Lancement de la calibration...")
     calibrate_joystick(joystick)
     print("[INFO] Calibration terminée, réinitialisation du joystick...")
-    
+
     pygame.quit()
     pygame.init()
-    
+
     joystick = reinitialize_joystick(debug_joystick)
     print("[INFO] Reprise de la collecte avec joystick réinitialisé.")
-    
+
     return joystick, True
 
 
@@ -232,12 +232,12 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
         calibration_requested = False
         post_calibration = False
         post_calibration_counter = 0
-        
+
         while True:
             if not pygame.get_init():
                 print("[INFO] Réinitialisation de pygame...")
                 pygame.init()
-            
+
             pygame.event.pump()
 
             # Gestion de la calibration
@@ -248,10 +248,10 @@ def collect_data_loop(env, behavior_name, output_file, joystick, debug_joystick=
                     joystick, debug_joystick
                 )
                 post_calibration_counter = 0
-                
+
             if not key_states['c']:
                 calibration_requested = False
-            
+
             # Si période de stabilisation post-calibration
             if post_calibration:
                 post_calibration_counter += 1
@@ -337,7 +337,7 @@ def main():
 
     # Initialisation du joystick
     joystick = init_joystick(args.debug_joystick)
-    
+
     # Calibration au démarrage si demandé
     if args.calibrate and joystick:
         print("[INFO] Calibration du joystick au démarrage...")

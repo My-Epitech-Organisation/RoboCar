@@ -106,7 +106,7 @@ def get_keyboard_input():
 
 class JoystickCalibration:
     """Classe pour gérer la calibration du joystick."""
-    
+
     def __init__(self):
         """Initialise les données de calibration du joystick."""
         self.calibration_file = os.path.join(
@@ -118,7 +118,7 @@ class JoystickCalibration:
             "acceleration": {"min": -1.0, "max": 1.0}
         }
         self.load_calibration()
-        
+
     def load_calibration(self):
         """Charge les données de calibration depuis le fichier."""
         try:
@@ -128,7 +128,7 @@ class JoystickCalibration:
                     print(f"[INFO] Calibration du joystick chargée: {self.calib_data}")
         except Exception as e:
             print(f"[AVERTISSEMENT] Erreur de chargement calibration: {e}")
-            
+
     def save_calibration(self):
         """Enregistre les données de calibration dans un fichier."""
         try:
@@ -137,25 +137,25 @@ class JoystickCalibration:
                 print(f"[INFO] Calibration enregistrée: {self.calib_data}")
         except Exception as e:
             print(f"[ERREUR] Impossible de sauvegarder la calibration: {e}")
-    
+
     def apply_calibration(self, axis_value, axis_type):
         """
         Applique la calibration à une valeur d'axe.
-        
+
         Args:
             axis_value: Valeur brute de l'axe
             axis_type: 'steering' ou 'acceleration'
-            
+
         Returns:
             float: Valeur normalisée entre -1.0 et 1.0
         """
         min_val = self.calib_data[axis_type]["min"]
         max_val = self.calib_data[axis_type]["max"]
-        
+
         # Éviter la division par zéro
         if min_val == max_val:
             return 0.0
-            
+
         # Normalisation entre -1 et 1
         if axis_value >= 0:
             return axis_value / max_val if max_val != 0 else 0.0
@@ -179,7 +179,7 @@ def get_joystick_input(joystick):
     """
     if joystick is None:
         return 0.0, 0.0
-    
+
     # Vérifier que le joystick est initialisé
     try:
         if not joystick.get_init():
