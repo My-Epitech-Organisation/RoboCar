@@ -7,9 +7,9 @@ and save the minimum/maximum values for each axis.
 
 import pygame
 import time
-# Use absolute import instead of relative import
-from src.collector.ui_components import JoystickCalibratorUI
-from src.collector.utils_collector import joystick_calibration
+
+from ui_components import JoystickCalibratorUI
+from utils_collector import joystick_calibration
 
 
 def calibrate_joystick(joystick):

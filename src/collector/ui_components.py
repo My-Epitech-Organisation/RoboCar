@@ -6,8 +6,8 @@ This module contains the graphical interface components used for joystick calibr
 
 import pygame
 import time
-# Use absolute import to maintain consistency
-from src.collector.utils_collector import joystick_calibration
+
+from utils_collector import joystick_calibration
 
 
 class JoystickCalibratorUI:
