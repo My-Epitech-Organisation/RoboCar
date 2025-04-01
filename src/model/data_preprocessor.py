@@ -13,6 +13,7 @@ import ast
 import glob
 import pandas as pd
 import numpy as np
+import random
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 
@@ -154,56 +155,49 @@ def generate_features(data):
     return X, y
 
 
-def augment_data(X, y, mirror_prob=0.5, noise_prob=0.3, noise_scale=0.05):
+def augment_data(X, y, noise_level=0.05, mirror_prob=0.5):
     """
-    Augment training data with mirroring and noise.
-    
-    Args:
-        X (np.ndarray): Feature array
-        y (np.ndarray): Target array
-        mirror_prob (float): Probability of mirroring
-        noise_prob (float): Probability of adding noise
-        noise_scale (float): Scale of noise to add
-        
-    Returns:
-        tuple: Augmented X and y arrays
+    Augmentation améliorée des données avec plusieurs techniques:
+    - Ajout de bruit aléatoire
+    - Effet miroir (inversion gauche-droite)
+    - Variation légère de la vitesse
     """
-    print("Augmenting data...")
+    augmented_X, augmented_y = [], []
     
-    # Original data
-    X_augmented = [X]
-    y_augmented = [y]
+    # Ajouter les données originales
+    augmented_X.extend(X)
+    augmented_y.extend(y)
     
-    # Mirror data (flip raycasts and reverse steering)
-    if mirror_prob > 0:
-        num_rays = X.shape[1] - 1  # Subtract 1 for speed feature
-        
-        # Create mirrored version (raycasts and steering)
-        X_mirrored = X.copy()
-        X_mirrored[:, :num_rays] = np.flip(X_mirrored[:, :num_rays], axis=1)
-        y_mirrored = -y.copy()
-        
-        X_augmented.append(X_mirrored)
-        y_augmented.append(y_mirrored)
+    # Miroir des données (inversion gauche-droite)
+    for i in range(len(X)):
+        if random.random() < mirror_prob:
+            # Supposons que X[i] contient [raycast_1, raycast_2, ..., raycast_n, speed]
+            # Et que les raycasts sont symétriques (le premier à gauche, le dernier à droite)
+            num_rays = len(X[i]) - 1  # Soustrait 1 pour la vitesse
+            mirrored_input = X[i].copy()
+            
+            # Inverser l'ordre des raycasts
+            mirrored_input[:num_rays] = mirrored_input[:num_rays][::-1]
+            
+            # Inverser la direction
+            mirrored_output = -y[i][0], y[i][1]  # Inverser steering, garder acceleration
+            
+            augmented_X.append(mirrored_input)
+            augmented_y.append(mirrored_output)
     
-    # Add noise
-    if noise_prob > 0:
-        # Add noise to raycasts
-        num_rays = X.shape[1] - 1  # Subtract 1 for speed feature
-        
-        X_noisy = X.copy()
-        noise = np.random.normal(0, noise_scale, size=X_noisy[:, :num_rays].shape)
-        X_noisy[:, :num_rays] = np.clip(X_noisy[:, :num_rays] + noise, 0, 1)
-        
-        X_augmented.append(X_noisy)
-        y_augmented.append(y.copy())
+    # Ajout de bruit aléatoire
+    for i in range(len(X)):
+        if random.random() < 0.3:  # 30% de chance d'ajouter du bruit
+            noisy_input = X[i].copy()
+            # Ajouter du bruit aux raycasts uniquement
+            for j in range(len(noisy_input) - 1):  # Tous sauf vitesse
+                noise = random.uniform(-noise_level, noise_level)
+                noisy_input[j] = max(0, min(1, noisy_input[j] + noise))  # Garder entre 0 et 1
+            
+            augmented_X.append(noisy_input)
+            augmented_y.append(y[i])
     
-    # Combine all augmented datasets
-    X_final = np.vstack(X_augmented)
-    y_final = np.concatenate(y_augmented)
-    
-    print(f"Data augmented from {len(X)} to {len(X_final)} samples")
-    return X_final, y_final
+    return np.array(augmented_X), np.array(augmented_y)
 
 
 def split_data(X, y, test_size=0.2, val_size=0.2, random_state=42):

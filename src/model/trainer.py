@@ -62,119 +62,145 @@ class TrainingHistory:
         return self.history
 
 
-def train_model(model, X_train, y_train, X_val, y_val, 
-                epochs=100, batch_size=32, learning_rate=0.001,
-                weight_decay=0.0001, patience=10, 
-                project_root=None, checkpoint_dir=None):
+def train_model(model, X_train, y_train, X_val, y_val, epochs=100, batch_size=32, 
+                learning_rate=0.001, project_root=".", use_scheduler=True,
+                early_stopping_patience=15, weight_decay=1e-4):
     """
-    Train a PyTorch model.
-    
-    Args:
-        model (nn.Module): PyTorch model to train
-        X_train (np.ndarray): Training features
-        y_train (np.ndarray): Training targets
-        X_val (np.ndarray): Validation features
-        y_val (np.ndarray): Validation targets
-        epochs (int): Maximum number of epochs
-        batch_size (int): Batch size for training
-        learning_rate (float): Learning rate for optimizer
-        weight_decay (float): L2 regularization parameter
-        patience (int): Early stopping patience
-        project_root (str): Path to project root (for saving)
-        checkpoint_dir (str): Directory for checkpoints
-    
-    Returns:
-        tuple: (trained model, training history)
+    Entraînement amélioré avec:
+    - Planificateur de taux d'apprentissage
+    - Régularisation L2 (weight_decay)
+    - Early stopping amélioré
+    - Sauvegarde du meilleur modèle
     """
-    # Determine device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Training on device: {device}")
-    
-    # Convert numpy arrays to PyTorch tensors
-    X_train_tensor = torch.FloatTensor(X_train).to(device)
-    y_train_tensor = torch.FloatTensor(y_train).reshape(-1, 1).to(device)
-    X_val_tensor = torch.FloatTensor(X_val).to(device)
-    y_val_tensor = torch.FloatTensor(y_val).reshape(-1, 1).to(device)
-    
-    # Create datasets and data loaders
-    train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    
-    # Move model to device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     
-    # Define loss function and optimizer
-    criterion = nn.MSELoss()
+    # Convertir les données en tenseurs
+    X_train_tensor = torch.FloatTensor(X_train).to(device)
+    y_train_tensor = torch.FloatTensor(y_train).to(device)
+    X_val_tensor = torch.FloatTensor(X_val).to(device)
+    y_val_tensor = torch.FloatTensor(y_val).to(device)
+    
+    # Préparer les datasets et dataloaders
+    train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+    val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
+    
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size)
+    
+    # Optimiseur avec régularisation L2
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     
-    # Initialize early stopping and training history
-    early_stopping = EarlyStopping(patience=patience)
-    history = TrainingHistory()
+    # Planificateur de taux d'apprentissage
+    scheduler = None
+    if use_scheduler:
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='min', factor=0.5, patience=7, verbose=True
+        )
     
-    # Set up checkpoint directory
-    if project_root is not None and checkpoint_dir is None:
-        checkpoint_dir = os.path.join(project_root, "checkpoints")
+    # Fonction de perte: MSE pour la direction, MAE pour l'accélération
+    criterion_steering = nn.MSELoss()
+    criterion_accel = nn.L1Loss()
     
-    if checkpoint_dir is not None:
-        os.makedirs(checkpoint_dir, exist_ok=True)
-    
-    print(f"Starting training for {epochs} epochs")
-    
+    # Tracking des métriques
+    best_val_loss = float('inf')
+    best_model_path = os.path.join(project_root, "model_checkpoint.pth")
+    patience_counter = 0
+    history = {'train_loss': [], 'val_loss': [], 'val_steering_mae': [], 'val_accel_mae': []}
+
+    # Boucle d'entraînement
     for epoch in range(epochs):
-        start_time = time.time()
-        
-        # Training phase
+        # Mode entraînement
         model.train()
-        train_losses = []
+        train_loss = 0.0
         
-        for batch_X, batch_y in train_loader:
+        for inputs, targets in train_loader:
             # Forward pass
-            outputs = model(batch_X)
-            loss = criterion(outputs, batch_y)
+            outputs = model(inputs)
             
-            # Backward pass and optimize
+            # Calculer la perte
+            loss_steering = criterion_steering(outputs[:, 0], targets[:, 0])
+            loss_accel = criterion_accel(outputs[:, 1], targets[:, 1])
+            loss = loss_steering + 0.5 * loss_accel  # Pondération de l'importance
+            
+            # Backward pass et optimisation
             optimizer.zero_grad()
             loss.backward()
+            # Gradient clipping pour stabilité
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             
-            train_losses.append(loss.item())
+            train_loss += loss.item()
         
-        # Calculate average training loss
-        avg_train_loss = np.mean(train_losses)
-        
-        # Validation phase
+        # Mode évaluation
         model.eval()
+        val_loss = 0.0
+        steering_errors = []
+        accel_errors = []
+        
         with torch.no_grad():
-            val_outputs = model(X_val_tensor)
-            val_loss = criterion(val_outputs, y_val_tensor).item()
+            for inputs, targets in val_loader:
+                outputs = model(inputs)
+                
+                # Calculer les métriques
+                steering_error = torch.abs(outputs[:, 0] - targets[:, 0])
+                accel_error = torch.abs(outputs[:, 1] - targets[:, 1])
+                
+                steering_errors.extend(steering_error.cpu().numpy())
+                accel_errors.extend(accel_error.cpu().numpy())
+                
+                # Perte totale
+                loss_steering = criterion_steering(outputs[:, 0], targets[:, 0])
+                loss_accel = criterion_accel(outputs[:, 1], targets[:, 1])
+                loss = loss_steering + 0.5 * loss_accel
+                val_loss += loss.item()
         
-        # Calculate epoch time
-        epoch_time = time.time() - start_time
+        # Calcul des moyennes
+        train_loss /= len(train_loader)
+        val_loss /= len(val_loader)
+        val_steering_mae = np.mean(steering_errors)
+        val_accel_mae = np.mean(accel_errors)
         
-        # Update history
-        history.update(avg_train_loss, val_loss, epoch_time)
+        # Mettre à jour le scheduler
+        if scheduler:
+            scheduler.step(val_loss)
         
-        # Print progress
-        print(f"Epoch {epoch+1}/{epochs} - "
-              f"Train loss: {avg_train_loss:.4f}, "
-              f"Val loss: {val_loss:.4f}, "
-              f"Time: {epoch_time:.2f}s")
+        # Sauvegarder les métriques
+        history['train_loss'].append(train_loss)
+        history['val_loss'].append(val_loss)
+        history['val_steering_mae'].append(val_steering_mae)
+        history['val_accel_mae'].append(val_accel_mae)
         
-        # Save checkpoint
-        if checkpoint_dir is not None and (epoch + 1) % 10 == 0:
-            checkpoint_path = os.path.join(checkpoint_dir, f"model_epoch_{epoch+1}.pth")
-            torch.save(model.state_dict(), checkpoint_path)
-            print(f"Checkpoint saved to {checkpoint_path}")
+        # Afficher progression
+        print(f"Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, "
+              f"Steering MAE: {val_steering_mae:.4f}, Accel MAE: {val_accel_mae:.4f}")
         
-        # Check for early stopping
-        early_stopping(model, val_loss)
-        if early_stopping.should_stop:
-            print(f"Early stopping triggered at epoch {epoch+1}")
+        # Sauvegarder le meilleur modèle
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_loss': val_loss,
+                'input_size': X_train.shape[1],
+                'num_rays': X_train.shape[1] - 1,  # Supposant que le dernier est la vitesse
+            }, best_model_path)
+            patience_counter = 0
+            print(f"Meilleur modèle sauvegardé (perte: {val_loss:.4f})")
+        else:
+            patience_counter += 1
+            
+        # Early stopping
+        if patience_counter >= early_stopping_patience:
+            print(f"Early stopping activé après {epoch+1} époques")
             break
     
-    print("Training completed")
+    # Charger le meilleur modèle
+    checkpoint = torch.load(best_model_path)
+    model.load_state_dict(checkpoint['model_state_dict'])
     
-    return model, history.get_history()
+    return model, history
 
 
 def save_model(model, path, input_size=None, model_type=None, metadata=None):

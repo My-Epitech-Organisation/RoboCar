@@ -8,195 +8,190 @@ This module:
 """
 
 import numpy as np
+import matplotlib.pyplot as plt
 import torch
+from sklearn.metrics import mean_squared_error, mean_absolute_error
+import json
+import os
 
-try:
-    import matplotlib.pyplot as plt
-    MATPLOTLIB_AVAILABLE = True
-except ImportError:
-    MATPLOTLIB_AVAILABLE = False
-    print("[WARNING] Matplotlib not available in evaluator module. Visualization functions disabled.")
-
-try:
-    from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
-    print("[WARNING] scikit-learn not available. Using numpy implementations for metrics.")
-
-
-def evaluate_model(model, X_test, y_test, device=None):
+class ModelEvaluator:
     """
-    Evaluate model performance on test data.
-    
-    Args:
-        model (nn.Module): Trained PyTorch model
-        X_test (np.ndarray): Test features
-        y_test (np.ndarray): Test targets
-        device (torch.device): Device for computation
+    Évaluateur complet de modèle qui analyse les performances sous différents angles.
+    """
+    def __init__(self, model, X_test, y_test, device='cpu'):
+        self.model = model.to(device)
+        self.X_test = torch.FloatTensor(X_test).to(device)
+        self.y_test = y_test
+        self.device = device
+        self.predictions = None
         
-    Returns:
-        dict: Evaluation metrics
-    """
-    if device is None:
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    def predict(self):
+        """Génère des prédictions pour l'ensemble de test"""
+        self.model.eval()
+        with torch.no_grad():
+            self.predictions = self.model(self.X_test).cpu().numpy()
+        return self.predictions
     
-    # Convert data to tensors
-    X_test_tensor = torch.FloatTensor(X_test).to(device)
-    
-    # Set model to evaluation mode
-    model.eval()
-    model = model.to(device)
-    
-    # Make predictions
-    with torch.no_grad():
-        y_pred_tensor = model(X_test_tensor)
-        y_pred = y_pred_tensor.cpu().numpy().flatten()
-    
-    # Calculate metrics
-    if SKLEARN_AVAILABLE:
-        mse = mean_squared_error(y_test, y_pred)
-        mae = mean_absolute_error(y_test, y_pred)
-        r2 = r2_score(y_test, y_pred)
-    else:
-        mse = ((y_test - y_pred) ** 2).mean()
-        mae = np.abs(y_test - y_pred).mean()
-        # Simple R² implementation
-        y_mean = y_test.mean()
-        ss_total = ((y_test - y_mean) ** 2).sum()
-        ss_residual = ((y_test - y_pred) ** 2).sum()
-        r2 = 1 - (ss_residual / ss_total) if ss_total > 0 else 0
-    
-    max_error = np.max(np.abs(y_test - y_pred))
-    
-    # Print metrics
-    print(f"Evaluation Metrics:")
-    print(f"  Mean Squared Error (MSE): {mse:.6f}")
-    print(f"  Mean Absolute Error (MAE): {mae:.6f}")
-    print(f"  R² Score: {r2:.6f}")
-    print(f"  Maximum Error: {max_error:.6f}")
-    
-    return {
-        'mse': mse,
-        'mae': mae,
-        'r2': r2,
-        'max_error': max_error,
-        'predictions': y_pred,
-        'actual': y_test
-    }
-
-
-def visualize_predictions(y_true, y_pred, title="Model Predictions vs. Actual Values"):
-    """
-    Visualize model predictions against actual values.
-    
-    Args:
-        y_true (np.ndarray): Actual values
-        y_pred (np.ndarray): Predicted values
-        title (str): Plot title
-    """
-    if not MATPLOTLIB_AVAILABLE:
-        print("[WARNING] Cannot visualize predictions: matplotlib is not available")
-        return
+    def calculate_metrics(self):
+        """Calcule les métriques d'évaluation"""
+        if self.predictions is None:
+            self.predict()
+            
+        # Séparer direction et accélération
+        y_steering = self.y_test[:, 0]
+        y_accel = self.y_test[:, 1]
+        pred_steering = self.predictions[:, 0]
+        pred_accel = self.predictions[:, 1]
         
-    plt.figure(figsize=(12, 6))
-    
-    # Plot sample indices vs values
-    indices = np.arange(len(y_true))
-    plt.subplot(2, 1, 1)
-    plt.plot(indices, y_true, 'b-', label='Actual', alpha=0.7)
-    plt.plot(indices, y_pred, 'r-', label='Predicted', alpha=0.7)
-    plt.xlabel('Sample Index')
-    plt.ylabel('Steering Value')
-    plt.title(f"{title} - Time Series View")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    # Plot scatter of predicted vs actual
-    plt.subplot(2, 1, 2)
-    plt.scatter(y_true, y_pred, alpha=0.5)
-    
-    # Plot perfect prediction line
-    min_val = min(np.min(y_true), np.min(y_pred))
-    max_val = max(np.max(y_true), np.max(y_pred))
-    plt.plot([min_val, max_val], [min_val, max_val], 'k--', alpha=0.8)
-    
-    plt.xlabel('Actual Values')
-    plt.ylabel('Predicted Values')
-    plt.title('Prediction Scatter Plot')
-    plt.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_training_history(history):
-    """
-    Plot training and validation loss over epochs.
-    
-    Args:
-        history (dict): Training history dictionary
-    """
-    if not MATPLOTLIB_AVAILABLE:
-        print("[WARNING] Cannot plot training history: matplotlib is not available")
-        return
+        # Métriques pour la direction
+        steering_metrics = {
+            'mse': mean_squared_error(y_steering, pred_steering),
+            'mae': mean_absolute_error(y_steering, pred_steering),
+            'max_error': np.max(np.abs(y_steering - pred_steering)),
+            'correlation': np.corrcoef(y_steering, pred_steering)[0, 1]
+        }
         
-    plt.figure(figsize=(12, 5))
-    
-    # Plot loss
-    plt.subplot(1, 2, 1)
-    plt.plot(history['train_loss'], 'b-', label='Training Loss')
-    plt.plot(history['val_loss'], 'r-', label='Validation Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.title('Training and Validation Loss')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    # Plot epoch times
-    plt.subplot(1, 2, 2)
-    plt.plot(history['epoch_times'], 'g-')
-    plt.xlabel('Epoch')
-    plt.ylabel('Time (seconds)')
-    plt.title('Epoch Training Time')
-    plt.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
-
-
-def analyze_error_distribution(y_true, y_pred):
-    """
-    Analyze the distribution of prediction errors.
-    
-    Args:
-        y_true (np.ndarray): Actual values
-        y_pred (np.ndarray): Predicted values
-    """
-    if not MATPLOTLIB_AVAILABLE:
-        print("[WARNING] Cannot analyze error distribution: matplotlib is not available")
-        return
+        # Métriques pour l'accélération
+        accel_metrics = {
+            'mse': mean_squared_error(y_accel, pred_accel),
+            'mae': mean_absolute_error(y_accel, pred_accel),
+            'max_error': np.max(np.abs(y_accel - pred_accel)),
+            'correlation': np.corrcoef(y_accel, pred_accel)[0, 1]
+        }
         
-    errors = y_true - y_pred
+        return {
+            'steering': steering_metrics,
+            'acceleration': accel_metrics
+        }
     
-    plt.figure(figsize=(12, 5))
-    
-    # Error histogram
-    plt.subplot(1, 2, 1)
-    plt.hist(errors, bins=30, alpha=0.7)
-    plt.xlabel('Prediction Error')
-    plt.ylabel('Frequency')
-    plt.title('Error Distribution')
-    plt.grid(True, alpha=0.3)
-    
-    # Error vs. actual value
-    plt.subplot(1, 2, 2)
-    plt.scatter(y_true, errors, alpha=0.5)
-    plt.axhline(y=0, color='r', linestyle='-', alpha=0.3)
-    plt.xlabel('Actual Value')
-    plt.ylabel('Error')
-    plt.title('Error vs. Actual Value')
-    plt.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
+    def visualize_predictions(self, sample_indices=None, save_path=None):
+        """
+        Visualise les prédictions vs les valeurs réelles
+        
+        Args:
+            sample_indices: Indices à visualiser, si None utilise les 100 premiers
+            save_path: Chemin où sauvegarder la figure
+        """
+        if self.predictions is None:
+            self.predict()
+            
+        if sample_indices is None:
+            sample_indices = range(min(100, len(self.y_test)))
+            
+        # Extraire les données à visualiser
+        y_steering = self.y_test[sample_indices, 0]
+        y_accel = self.y_test[sample_indices, 1]
+        pred_steering = self.predictions[sample_indices, 0]
+        pred_accel = self.predictions[sample_indices, 1]
+        
+        # Créer la figure
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+        
+        # Tracer les prédictions de direction
+        ax1.plot(y_steering, label='Direction réelle', color='blue')
+        ax1.plot(pred_steering, label='Direction prédite', color='red', linestyle='--')
+        ax1.set_title('Prédictions de direction')
+        ax1.set_ylabel('Angle de direction')
+        ax1.legend()
+        ax1.grid(True)
+        
+        # Tracer les prédictions d'accélération
+        ax2.plot(y_accel, label='Accélération réelle', color='blue')
+        ax2.plot(pred_accel, label='Accélération prédite', color='red', linestyle='--')
+        ax2.set_title('Prédictions d\'accélération')
+        ax2.set_xlabel('Échantillons')
+        ax2.set_ylabel('Commande d\'accélération')
+        ax2.legend()
+        ax2.grid(True)
+        
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path)
+            print(f"Figure sauvegardée à {save_path}")
+        
+        plt.show()
+        
+    def export_report(self, output_dir):
+        """
+        Exporte un rapport complet d'évaluation
+        """
+        # Créer le répertoire si nécessaire
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Calculer les métriques
+        metrics = self.calculate_metrics()
+        
+        # Sauvegarder les métriques au format JSON
+        metrics_path = os.path.join(output_dir, 'metrics.json')
+        with open(metrics_path, 'w') as f:
+            json.dump(metrics, f, indent=4)
+        
+        # Générer et sauvegarder les visualisations
+        viz_path = os.path.join(output_dir, 'predictions_comparison.png')
+        self.visualize_predictions(save_path=viz_path)
+        
+        # Analyser les erreurs
+        self.analyze_errors(output_dir)
+        
+        print(f"Rapport d'évaluation complet exporté dans {output_dir}")
+        
+    def analyze_errors(self, output_dir):
+        """
+        Analyse détaillée des erreurs de prédiction
+        """
+        if self.predictions is None:
+            self.predict()
+            
+        # Calculer les erreurs
+        steering_errors = np.abs(self.y_test[:, 0] - self.predictions[:, 0])
+        accel_errors = np.abs(self.y_test[:, 1] - self.predictions[:, 1])
+        
+        # Trouver les cas les plus problématiques
+        worst_steering_idx = np.argsort(steering_errors)[-10:]
+        worst_accel_idx = np.argsort(accel_errors)[-10:]
+        
+        # Sauvegarder les résultats
+        error_analysis = {
+            'worst_steering_cases': [
+                {
+                    'index': int(idx),
+                    'actual': float(self.y_test[idx, 0]),
+                    'predicted': float(self.predictions[idx, 0]),
+                    'error': float(steering_errors[idx])
+                }
+                for idx in worst_steering_idx
+            ],
+            'worst_acceleration_cases': [
+                {
+                    'index': int(idx),
+                    'actual': float(self.y_test[idx, 1]),
+                    'predicted': float(self.predictions[idx, 1]),
+                    'error': float(accel_errors[idx])
+                }
+                for idx in worst_accel_idx
+            ]
+        }
+        
+        # Sauvegarder l'analyse
+        error_path = os.path.join(output_dir, 'error_analysis.json')
+        with open(error_path, 'w') as f:
+            json.dump(error_analysis, f, indent=4)
+        
+        # Visualiser la distribution des erreurs
+        plt.figure(figsize=(12, 6))
+        
+        plt.subplot(1, 2, 1)
+        plt.hist(steering_errors, bins=30)
+        plt.title('Distribution des erreurs de direction')
+        plt.xlabel('Erreur absolue')
+        plt.ylabel('Fréquence')
+        
+        plt.subplot(1, 2, 2)
+        plt.hist(accel_errors, bins=30)
+        plt.title('Distribution des erreurs d\'accélération')
+        plt.xlabel('Erreur absolue')
+        plt.ylabel('Fréquence')
+        
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'error_distribution.png'))

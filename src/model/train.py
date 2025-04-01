@@ -9,280 +9,155 @@ This script:
 """
 
 import os
-import sys
 import argparse
 import numpy as np
-
-# Check for required dependencies
-missing_deps = []
-
-try:
-    import torch
-except ImportError:
-    missing_deps.append("torch")
-
-try:
-    import matplotlib.pyplot as plt
-    MATPLOTLIB_AVAILABLE = True
-except ImportError:
-    MATPLOTLIB_AVAILABLE = False
-    missing_deps.append("matplotlib")
-
-if missing_deps:
-    print("\n[ERROR] Missing required dependencies:")
-    print("  The following packages are required but not installed:")
-    for dep in missing_deps:
-        print(f"    - {dep}")
-    print("\nPlease install them using pip:")
-    print(f"  pip install {' '.join(missing_deps)}")
-    print("\nOr with your virtual environment:")
-    print("  source .venv/bin/activate")
-    print(f"  pip install {' '.join(missing_deps)}")
-    sys.exit(1)
-
-# Fix import path issues
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
-
-# Import local modules
-import data_preprocessor
-import model_builder
-import trainer
-if MATPLOTLIB_AVAILABLE:
-    import evaluator
-
-
-def parse_arguments():
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description='RoboCar Neural Network Training')
-    
-    # Data parameters
-    parser.add_argument('--data_dir', type=str, default='data',
-                        help='Directory with CSV data files')
-    parser.add_argument('--no_augment', action='store_true',
-                        help='Disable data augmentation')
-    
-    # Model parameters
-    parser.add_argument('--model_type', type=str, default='simple',
-                        choices=['simple', 'cnn', 'lstm', 'multi'],
-                        help='Type of model architecture')
-    parser.add_argument('--hidden_size', type=int, default=64,
-                        help='Size of hidden layers')
-    
-    # Training parameters
-    parser.add_argument('--epochs', type=int, default=100,
-                        help='Number of training epochs')
-    parser.add_argument('--batch_size', type=int, default=32,
-                        help='Training batch size')
-    parser.add_argument('--learning_rate', type=float, default=0.001,
-                        help='Learning rate')
-    parser.add_argument('--patience', type=int, default=10,
-                        help='Early stopping patience')
-    
-    # Output parameters
-    parser.add_argument('--output_dir', type=str, default=None,
-                        help='Directory to save model and results (default: project root)')
-    parser.add_argument('--model_name', type=str, default='model_checkpoint.pth',
-                        help='Filename for saved model')
-    
-    # Visualization parameters
-    parser.add_argument('--no_viz', action='store_true',
-                        help='Disable visualization (useful if matplotlib is not available)')
-    
-    return parser.parse_args()
-
-
-def get_project_root():
-    """Return the project root path."""
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-
-
-def evaluate_without_viz(model, X_test, y_test):
-    """
-    Simple evaluation without matplotlib visualization.
-    
-    Args:
-        model: Trained model
-        X_test: Test features
-        y_test: Test targets
-        
-    Returns:
-        dict: Evaluation metrics
-    """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    X_test_tensor = torch.FloatTensor(X_test).to(device)
-    
-    # Set model to evaluation mode
-    model.eval()
-    model = model.to(device)
-    
-    # Make predictions
-    with torch.no_grad():
-        y_pred_tensor = model(X_test_tensor)
-        y_pred = y_pred_tensor.cpu().numpy().flatten()
-    
-    # Calculate basic metrics
-    mse = ((y_test - y_pred) ** 2).mean()
-    mae = np.abs(y_test - y_pred).mean()
-    
-    # Print metrics
-    print(f"Evaluation Metrics:")
-    print(f"  Mean Squared Error (MSE): {mse:.6f}")
-    print(f"  Mean Absolute Error (MAE): {mae:.6f}")
-    
-    return {
-        'mse': mse,
-        'mae': mae,
-        'predictions': y_pred,
-        'actual': y_test
-    }
-
+import torch
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import datetime
+from data_preprocessor import load_session, preprocess_data, split_data, augment_data
+from model_builder import create_model
+from trainer import train_model
+from evaluator import ModelEvaluator
 
 def main():
-    """Main training function."""
-    args = parse_arguments()
-    project_root = get_project_root()
+    # Configuration des arguments
+    parser = argparse.ArgumentParser(description='Entraînement de modèle RoboCar')
+    parser.add_argument('--data_dir', type=str, default='data/raw',
+                        help='Répertoire des données brutes')
+    parser.add_argument('--model_type', type=str, default='hybrid',
+                        choices=['simple', 'cnn', 'lstm', 'hybrid', 'multi'],
+                        help='Type de modèle à entraîner')
+    parser.add_argument('--epochs', type=int, default=100,
+                        help='Nombre d\'époques d\'entraînement')
+    parser.add_argument('--batch_size', type=int, default=32, 
+                        help='Taille des batchs')
+    parser.add_argument('--learning_rate', type=float, default=0.001,
+                        help='Taux d\'apprentissage')
+    parser.add_argument('--test_size', type=float, default=0.2,
+                        help='Proportion des données pour la validation')
+    parser.add_argument('--augment', action='store_true', default=True,
+                        help='Activer l\'augmentation des données')
+    parser.add_argument('--no_augment', action='store_false', dest='augment',
+                        help='Désactiver l\'augmentation des données')
+    parser.add_argument('--seed', type=int, default=42,
+                        help='Seed pour la reproductibilité')
+    parser.add_argument('--output_dir', type=str, default='models',
+                        help='Répertoire de sortie pour les modèles')
     
-    # Check if visualization is disabled by argument or missing matplotlib
-    visualization_enabled = not args.no_viz and MATPLOTLIB_AVAILABLE
-    if not MATPLOTLIB_AVAILABLE and not args.no_viz:
-        print("[WARNING] Matplotlib not available. Visualizations disabled.")
-        print("[WARNING] Install matplotlib for visualizations: pip install matplotlib")
+    args = parser.parse_args()
     
-    print(f"RoboCar Neural Network Training")
-    print(f"Project root: {project_root}")
+    # Garantir la reproductibilité
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(args.seed)
     
-    # Set paths
-    data_dir = os.path.join(project_root, args.data_dir)
-    output_dir = args.output_dir if args.output_dir else project_root
-    model_path = os.path.join(output_dir, args.model_name)
+    # Créer le répertoire de sortie
+    os.makedirs(args.output_dir, exist_ok=True)
     
-    print(f"Data directory: {data_dir}")
-    print(f"Output model path: {model_path}")
+    # Timestamp pour l'identifiant unique de cette session
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join(args.output_dir, f"{args.model_type}_{timestamp}")
+    os.makedirs(run_dir, exist_ok=True)
     
-    # Get number of rays from config
-    num_rays = data_preprocessor.get_num_rays_from_config(project_root)
+    # 1. Charger et préparer les données
+    print("Chargement des données...")
+    csv_files = [os.path.join(args.data_dir, f) for f in os.listdir(args.data_dir) if f.endswith('.csv')]
     
-    # Load and preprocess data
-    print("\n[1] Loading and preprocessing data...")
-    try:
-        data = data_preprocessor.load_all_sessions(data_dir)
-        X, y = data_preprocessor.preprocess_data(data, augment=not args.no_augment)
-        
-        # Split data
-        X_train, X_val, X_test, y_train, y_val, y_test = data_preprocessor.split_data(X, y)
-        
-        print(f"Data shapes:")
-        print(f"  X_train: {X_train.shape}")
-        print(f"  X_val: {X_val.shape}")
-        print(f"  X_test: {X_test.shape}")
-    except Exception as e:
-        print(f"Error during data preprocessing: {e}")
-        sys.exit(1)
+    if not csv_files:
+        print(f"Aucun fichier CSV trouvé dans {args.data_dir}")
+        return
     
-    # Create model
-    print("\n[2] Creating model...")
-    try:
-        input_size = X_train.shape[1]
-        print(f"Input size: {input_size}")
-        
-        # Create model based on type
-        model = model_builder.create_model(
-            args.model_type, 
-            input_size, 
-            num_rays=num_rays
-        )
-        
-        print(f"Created {args.model_type.upper()} model")
-    except Exception as e:
-        print(f"Error creating model: {e}")
-        sys.exit(1)
+    # Charger et combiner les données
+    all_data = []
+    for csv_file in csv_files:
+        print(f"  Traitement de {os.path.basename(csv_file)}")
+        data = load_session(csv_file)
+        all_data.append(data)
     
-    # Train model
-    print("\n[3] Training model...")
-    try:
-        trained_model, history = trainer.train_model(
-            model,
-            X_train, y_train,
-            X_val, y_val,
-            epochs=args.epochs,
-            batch_size=args.batch_size,
-            learning_rate=args.learning_rate,
-            patience=args.patience,
-            project_root=project_root
-        )
-        
-        # Plot training history if visualization is enabled
-        if visualization_enabled:
-            evaluator.plot_training_history(history)
-    except Exception as e:
-        print(f"Error during training: {e}")
-        sys.exit(1)
+    data = pd.concat(all_data, ignore_index=True)
+    print(f"Total de {len(data)} échantillons chargés")
     
-    # Evaluate model
-    print("\n[4] Evaluating model...")
-    try:
-        if visualization_enabled:
-            metrics = evaluator.evaluate_model(trained_model, X_test, y_test)
-            
-            # Visualize predictions
-            evaluator.visualize_predictions(
-                metrics['actual'], 
-                metrics['predictions'], 
-                title=f"{args.model_type.upper()} Model Predictions"
-            )
-            
-            # Analyze errors
-            evaluator.analyze_error_distribution(
-                metrics['actual'], 
-                metrics['predictions']
-            )
-        else:
-            # Use simplified evaluation without visualization
-            metrics = evaluate_without_viz(trained_model, X_test, y_test)
-    except Exception as e:
-        print(f"Error during evaluation: {e}")
-        sys.exit(1)
+    # 2. Prétraiter les données
+    print("Prétraitement des données...")
+    X, y = preprocess_data(data, normalize=True)
     
-    # Save model
-    print("\n[5] Saving model...")
-    try:
-        # Save metadata with the model
-        metadata = {
-            'model_type': args.model_type,
-            'num_rays': num_rays,
-            'input_size': input_size,
-            'metrics': {
-                'mse': float(metrics['mse']),
-                'mae': float(metrics['mae']),
-            },
-            'training_params': {
-                'epochs': args.epochs,
-                'batch_size': args.batch_size,
-                'learning_rate': args.learning_rate
-            }
-        }
-        
-        # Add r2 score if available
-        if 'r2' in metrics:
-            metadata['metrics']['r2'] = float(metrics['r2'])
-        
-        trainer.save_model(
-            trained_model, 
-            model_path, 
-            input_size=input_size,
-            model_type=args.model_type,
-            metadata=metadata
-        )
-        
-        print(f"Model successfully saved to {model_path}")
-    except Exception as e:
-        print(f"Error saving model: {e}")
-        sys.exit(1)
+    # 3. Augmenter les données si demandé
+    if args.augment:
+        print("Augmentation des données...")
+        X, y = augment_data(X, y)
+        print(f"Données augmentées à {len(X)} échantillons")
     
-    print("\nTraining completed successfully!")
-
+    # 4. Diviser en ensembles d'entraînement et de validation
+    X_train, X_val, y_train, y_val = split_data(X, y, test_size=args.test_size)
+    print(f"Ensemble d'entraînement: {len(X_train)} échantillons")
+    print(f"Ensemble de validation: {len(X_val)} échantillons")
+    
+    # 5. Créer le modèle
+    print(f"Création du modèle {args.model_type}...")
+    input_size = X_train.shape[1]
+    num_rays = input_size - 1  # Supposant que le dernier élément est la vitesse
+    
+    model = create_model(
+        args.model_type, 
+        input_size=input_size, 
+        num_rays=num_rays
+    )
+    print(model)
+    
+    # 6. Entraîner le modèle
+    print("Démarrage de l'entraînement...")
+    model, history = train_model(
+        model,
+        X_train, y_train,
+        X_val, y_val,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        project_root=".",  # Enregistre le meilleur modèle à la racine
+        use_scheduler=True,
+        early_stopping_patience=15
+    )
+    
+    # 7. Évaluer le modèle
+    print("Évaluation du modèle...")
+    evaluator = ModelEvaluator(model, X_val, y_val)
+    metrics = evaluator.calculate_metrics()
+    
+    # Afficher les métriques principales
+    print("\nMétriques d'évaluation:")
+    print(f"  Direction - MAE: {metrics['steering']['mae']:.4f}, MSE: {metrics['steering']['mse']:.4f}")
+    print(f"  Accélération - MAE: {metrics['acceleration']['mae']:.4f}, MSE: {metrics['acceleration']['mse']:.4f}")
+    
+    # 8. Sauvegarder le rapport d'évaluation
+    print("Génération du rapport d'évaluation...")
+    evaluator.export_report(run_dir)
+    
+    # 9. Visualiser l'historique d'entraînement
+    plt.figure(figsize=(12, 4))
+    
+    plt.subplot(1, 2, 1)
+    plt.plot(history['train_loss'], label='Train')
+    plt.plot(history['val_loss'], label='Validation')
+    plt.title('Perte d\'entraînement')
+    plt.xlabel('Époque')
+    plt.ylabel('Perte')
+    plt.legend()
+    
+    plt.subplot(1, 2, 2)
+    plt.plot(history['val_steering_mae'], label='Direction')
+    plt.plot(history['val_accel_mae'], label='Accélération')
+    plt.title('MAE de validation')
+    plt.xlabel('Époque')
+    plt.ylabel('MAE')
+    plt.legend()
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(run_dir, 'training_history.png'))
+    
+    print(f"\nEntraînement terminé. Tous les résultats sauvegardés dans {run_dir}")
+    print(f"Le meilleur modèle a été sauvegardé à model_checkpoint.pth")
 
 if __name__ == "__main__":
     main()

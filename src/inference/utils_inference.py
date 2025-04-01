@@ -12,6 +12,7 @@ import json
 import numpy as np
 import torch
 import time
+import math
 
 
 def load_model_metadata(model_path):
@@ -169,3 +170,91 @@ def check_model_compatibility(model_input_size, num_rays):
         return False
     
     return True
+
+
+class AdvancedSteeringController:
+    """
+    Contrôleur de direction avancé avec:
+    - Lissage exponentiel
+    - Contraintes physiques de direction
+    - Adaptation à la vitesse
+    """
+    def __init__(self, history_size=10, alpha=0.3):
+        self.history = []
+        self.history_size = history_size
+        self.alpha = alpha  # Facteur de lissage exponentiel
+        self.last_steering = 0.0
+        
+    def update(self, predicted_steering, current_speed, dt=0.05):
+        """
+        Met à jour la commande de direction en appliquant un lissage
+        et des contraintes adaptées à la vitesse.
+        
+        Args:
+            predicted_steering: Prédiction brute du modèle
+            current_speed: Vitesse actuelle du véhicule
+            dt: Intervalle de temps entre deux prédictions
+        """
+        # Ajouter à l'historique
+        self.history.append(predicted_steering)
+        if len(self.history) > self.history_size:
+            self.history.pop(0)
+        
+        # Lissage exponentiel
+        smoothed = self.last_steering
+        for steer in self.history:
+            smoothed = self.alpha * steer + (1 - self.alpha) * smoothed
+        
+        # Limiter le taux de changement basé sur la vitesse
+        # Plus la vitesse est élevée, plus les changements sont progressifs
+        max_change_rate = 2.0  # radians/seconde
+        speed_factor = 1.0 / (1.0 + 0.1 * current_speed)  # Ralentir les changements à haute vitesse
+        max_change = max_change_rate * dt * speed_factor
+        
+        # Appliquer la limite de taux de changement
+        delta = smoothed - self.last_steering
+        if abs(delta) > max_change:
+            delta = math.copysign(max_change, delta)
+        
+        # Calculer la nouvelle valeur de direction
+        new_steering = self.last_steering + delta
+        
+        # Stocker pour la prochaine itération
+        self.last_steering = new_steering
+        
+        return new_steering
+
+
+class AccelerationController:
+    """
+    Contrôleur d'accélération intelligent qui ajuste la vitesse
+    en fonction des conditions de la piste.
+    """
+    def __init__(self, max_speed=1.0, caution_distance=0.5):
+        self.max_speed = max_speed
+        self.caution_distance = caution_distance
+        self.last_accel = 0.0
+        
+    def compute_acceleration(self, predicted_accel, raycasts, steering_angle):
+        """
+        Calcule l'accélération appropriée basée sur la prédiction du modèle,
+        les distances des raycasts et l'angle de direction.
+        """
+        # Trouver la distance minimale devant le véhicule
+        forward_rays = raycasts[len(raycasts)//4:3*len(raycasts)//4]  # Rayons centraux (devant)
+        min_distance = min(forward_rays) if forward_rays else 1.0
+        
+        # Facteur de prudence basé sur la proximité d'obstacles
+        caution_factor = min(1.0, min_distance / self.caution_distance)
+        
+        # Facteur de virage - réduire l'accélération dans les virages serrés
+        turn_factor = 1.0 - min(1.0, abs(steering_angle) / 0.5)
+        
+        # Combiner les facteurs pour ajuster l'accélération
+        adjusted_accel = predicted_accel * caution_factor * turn_factor
+        
+        # Lisser les changements d'accélération
+        smooth_accel = 0.8 * adjusted_accel + 0.2 * self.last_accel
+        self.last_accel = smooth_accel
+        
+        return smooth_accel

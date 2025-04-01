@@ -144,7 +144,83 @@ class MultiInputModel(nn.Module):
         return output
 
 
-def create_model(model_type, input_size, num_rays=None):
+class HybridModel(nn.Module):
+    """
+    Modèle hybride combinant CNN pour le traitement spatial des raycasts
+    et LSTM pour capturer les dépendances temporelles.
+    """
+    def __init__(self, input_size, num_rays, seq_length=10):
+        super(HybridModel, self).__init__()
+        
+        # Partie CNN pour traiter les raycasts
+        self.cnn = nn.Sequential(
+            nn.Conv1d(1, 16, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(16, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.AdaptiveMaxPool1d(8),  # Réduire à une taille fixe
+            nn.Flatten()
+        )
+        
+        # Calculer la taille de sortie du CNN
+        cnn_output_size = 32 * 8
+        
+        # LSTM pour traiter la séquence temporelle
+        self.lstm = nn.LSTM(
+            input_size=cnn_output_size + 1,  # +1 pour la vitesse
+            hidden_size=64,
+            num_layers=2,
+            batch_first=True,
+            dropout=0.3
+        )
+        
+        # Couches fully connected pour la sortie
+        self.fc = nn.Sequential(
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(32, 2)  # 2 sorties: direction et accélération
+        )
+        
+        self.num_rays = num_rays
+        self.seq_length = seq_length
+    
+    def forward(self, x, hidden=None):
+        # x shape: [batch, seq_len, input_size]
+        batch_size, seq_len, _ = x.shape
+        
+        # Traiter chaque pas de temps avec CNN
+        cnn_outputs = []
+        for t in range(seq_len):
+            # Séparer raycasts et vitesse
+            raycasts = x[:, t, :self.num_rays].unsqueeze(1)  # Ajouter dimension canal
+            speed = x[:, t, -1].unsqueeze(1)  # Isoler la vitesse
+            
+            # Traiter raycasts avec CNN
+            cnn_out = self.cnn(raycasts)
+            
+            # Concaténer avec vitesse
+            combined = torch.cat([cnn_out, speed], dim=1)
+            cnn_outputs.append(combined)
+        
+        # Empiler les sorties CNN pour former une séquence
+        cnn_sequence = torch.stack(cnn_outputs, dim=1)
+        
+        # Traiter la séquence avec LSTM
+        if hidden is None:
+            lstm_out, hidden = self.lstm(cnn_sequence)
+        else:
+            lstm_out, hidden = self.lstm(cnn_sequence, hidden)
+        
+        # Prendre la dernière sortie de la séquence
+        last_output = lstm_out[:, -1, :]
+        
+        # Passer par les couches fully connected
+        output = self.fc(last_output)
+        return output, hidden
+
+
+def create_model(model_type, input_size, num_rays=None, **kwargs):
     """
     Factory function to create models based on type.
     
@@ -170,5 +246,9 @@ def create_model(model_type, input_size, num_rays=None):
         raycast_size = input_size - 1  # Raycasts + other features except speed
         other_feature_size = 1  # Just speed
         return MultiInputModel(raycast_size, other_feature_size)
+    elif model_type == "hybrid":
+        num_rays = kwargs.get("num_rays", input_size - 1)  # Par défaut, tous sauf vitesse
+        seq_length = kwargs.get("seq_length", 10)
+        return HybridModel(input_size, num_rays, seq_length)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
