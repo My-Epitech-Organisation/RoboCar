@@ -106,6 +106,8 @@ Parameters:
 - `fov`: Field of view in degrees (1-180)
 - `nbRay`: Number of raycasts (1-50)
 
+> **Important for Neural Network Training**: The number of raycasts (`nbRay`) defined in this configuration file determines the input dimension of your neural network. Your model architecture must be compatible with this value. When training a neural network, ensure that the input layer can accept exactly this number of raycast values.
+
 ## Data Output
 
 ### File Location
