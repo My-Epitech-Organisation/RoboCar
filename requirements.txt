@@ -1,0 +1,19 @@
+# Fichier requirements.txt
+
+# Bibliothèque pour la connexion Unity ML-Agents
+mlagents
+
+# Bibliothèque pour la gestion des entrées manette/clavier
+pygame
+
+# PyTorch pour le deep learning
+torch
+
+# Outils Data Science
+pandas
+numpy>=1.20.0
+
+# Gestion des fichiers de config au format YAML
+PyYAML
+protobuf==3.20.*
+pynput

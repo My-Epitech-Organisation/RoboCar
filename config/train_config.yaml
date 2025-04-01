@@ -1,0 +1,16 @@
+training:
+  model:
+    input_size: 12
+    hidden_size: 64
+    output_size: 2
+  hyperparams:
+    batch_size: 64
+    learning_rate: 0.001
+    epochs: 10
+    early_stopping: true
+    patience: 3
+
+paths:
+  data_raw: "../data/raw"
+  data_processed: "../data/processed"
+  model_output: "../data/processed/mlp_controller.pt"
