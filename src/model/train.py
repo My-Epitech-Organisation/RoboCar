@@ -1,6 +1,8 @@
 import torch
 import ast
 import pandas as pd
+import numpy as np
+import json
 from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
 import torch.nn as nn
@@ -35,9 +37,27 @@ target = data[['speed', 'steering']].values
 scaler = StandardScaler()
 features = scaler.fit_transform(features)
 
+# Sauvegarder les valeurs de normalisation pour l'inférence
+scaler_values = {
+    "means": scaler.mean_.tolist(),
+    "stds": scaler.scale_.tolist()
+}
+
+with open('scaler_values.json', 'w') as f:
+    json.dump(scaler_values, f)
+print("Valeurs de normalisation sauvegardées dans 'scaler_values.json'")
+
 # Convertir en tensors
 features_tensor = torch.tensor(features, dtype=torch.float32)
 target_tensor = torch.tensor(target, dtype=torch.float32)
+
+# Afficher des statistiques sur les données
+print("\nStatistiques des données:")
+print(f"Nombre d'échantillons: {len(features_tensor)}")
+print(f"Nombre de features: {features_tensor.shape[1]}")
+print(f"Plage des valeurs cibles:")
+print(f"  - Speed: min={target[:, 0].min():.4f}, max={target[:, 0].max():.4f}")
+print(f"  - Steering: min={target[:, 1].min():.4f}, max={target[:, 1].max():.4f}")
 
 # Diviser en ensembles d'entraînement et de test
 X_train, X_test, y_train, y_test = train_test_split(features_tensor, target_tensor, test_size=0.2, random_state=42)
@@ -66,6 +86,9 @@ optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 # Entraîner le modèle
 epochs = 100
+train_losses = []
+test_losses = []
+
 for epoch in range(epochs):
     # Entraînement
     model.train()
@@ -74,10 +97,18 @@ for epoch in range(epochs):
     loss = criterion(outputs, y_train)
     loss.backward()
     optimizer.step()
+    train_losses.append(loss.item())
+
+    # Validation
+    model.eval()
+    with torch.no_grad():
+        test_outputs = model(X_test)
+        test_loss = criterion(test_outputs, y_test)
+        test_losses.append(test_loss.item())
 
     # Afficher la perte à chaque 10 epochs
     if (epoch + 1) % 10 == 0:
-        print(f'Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}')
+        print(f'Epoch [{epoch+1}/{epochs}], Train Loss: {loss.item():.4f}, Test Loss: {test_loss.item():.4f}')
 
 # Sauvegarder le modèle après l'entraînement
 torch.save(model.state_dict(), 'model_checkpoint.pth')
@@ -88,11 +119,20 @@ model.eval()
 with torch.no_grad():
     y_pred = model(X_test)
     test_loss = criterion(y_pred, y_test)
-    print(f'Test Loss: {test_loss.item():.4f}')
+    print(f'Test Loss final: {test_loss.item():.4f}')
 
     # Comparer les prédictions avec les valeurs réelles
-    print("Prédictions :\n", y_pred[:5])
-    print("Réel :\n", y_test[:5])
+    print("\nComparaison des prédictions:")
+    for i in range(5):
+        print(f"Échantillon {i}:")
+        print(f"  Prédit: Speed={y_pred[i,0]:.4f}, Steering={y_pred[i,1]:.4f}")
+        print(f"  Réel:   Speed={y_test[i,0]:.4f}, Steering={y_test[i,1]:.4f}")
+        print()
+
+# Calculer des métriques d'évaluation supplémentaires
+abs_errors = torch.abs(y_pred - y_test)
+mean_abs_error = torch.mean(abs_errors, dim=0)
+print(f"Erreur absolue moyenne: Speed={mean_abs_error[0]:.4f}, Steering={mean_abs_error[1]:.4f}")
 
 # Pour charger un modèle sauvegardé, utilise :
 # model.load_state_dict(torch.load('model_checkpoint.pth'))
