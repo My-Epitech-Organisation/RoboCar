@@ -12,14 +12,14 @@ import os
 
 # Fonction pour choisir un fichier d'entraînement
 def choisir_fichier_entraînement():
-    fichiers = [f for f in os.listdir('./data') if f.endswith('.csv')]
+    fichiers = [f for f in os.listdir('./data/Track1') if f.endswith('.csv')]
     print("Choisissez un fichier d'entraînement parmi les suivants :")
     for i, fichier in enumerate(fichiers, start=1):
         print(f"{i}. {fichier}")
     
     choix = int(input("Entrez le numéro du fichier : ")) - 1
     fichier_choisi = fichiers[choix]
-    return os.path.join('./data', fichier_choisi)
+    return os.path.join('./data/Track1', fichier_choisi)
 
 # Charger et préparer les données
 fichier_entraînement = choisir_fichier_entraînement()
