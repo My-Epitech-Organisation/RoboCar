@@ -148,8 +148,17 @@ def generate_features(data):
     # Combine features
     X = np.hstack((X_raycasts, X_speed))
     
-    # Target is steering_input (what the user did)
-    y = data['steering_input'].values
+    # Target includes both steering and acceleration inputs
+    y_steering = data['steering_input'].values.reshape(-1, 1)
+    
+    # Add acceleration input if available, otherwise use zeros
+    if 'acceleration_input' in data.columns:
+        y_accel = data['acceleration_input'].values.reshape(-1, 1)
+    else:
+        y_accel = np.zeros_like(y_steering)
+    
+    # Combine targets
+    y = np.hstack((y_steering, y_accel))
     
     print(f"Generated feature array with shape {X.shape} and target array with shape {y.shape}")
     return X, y
@@ -163,6 +172,14 @@ def augment_data(X, y, noise_level=0.05, mirror_prob=0.5):
     - Variation légère de la vitesse
     """
     augmented_X, augmented_y = [], []
+    
+    # Vérifier si y est 1D ou 2D
+    if len(y.shape) == 1 or y.shape[1] == 1:
+        # Si y est 1D (juste steering), le convertir en 2D
+        y = y.reshape(-1, 1)
+        # Ajouter une colonne d'accélération avec des zéros
+        y = np.hstack((y, np.zeros((y.shape[0], 1))))
+        print("Converted 1D target array to 2D with zeros for acceleration")
     
     # Ajouter les données originales
     augmented_X.extend(X)
@@ -180,7 +197,7 @@ def augment_data(X, y, noise_level=0.05, mirror_prob=0.5):
             mirrored_input[:num_rays] = mirrored_input[:num_rays][::-1]
             
             # Inverser la direction
-            mirrored_output = -y[i][0], y[i][1]  # Inverser steering, garder acceleration
+            mirrored_output = np.array([-y[i][0], y[i][1]])  # Inverser steering, garder acceleration
             
             augmented_X.append(mirrored_input)
             augmented_y.append(mirrored_output)
