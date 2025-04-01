@@ -13,18 +13,18 @@ class DrivingDataset(Dataset):
     """
     def __init__(self, df):
         self.df = df
-    
+
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        
+
         # Exemple: conversion de la colonne "raycasts" (string) en liste/array
         # A adapter selon votre format
         raycasts = eval(row["raycasts"])  # attention à eval, mieux vaut un parsing plus sûr
         speed = row.get("speed", 0.0)
-        
+
         # Features
         inputs = raycasts + [speed]  # liste ou array
         inputs_tensor = torch.tensor(inputs, dtype=torch.float32)
@@ -47,7 +47,7 @@ def collate_fn(batch):
     for inp, tgt in batch:
         inputs.append(inp)
         targets.append(tgt)
-    
+
     inputs = torch.stack(inputs, dim=0)   # [B, input_size]
     targets = torch.stack(targets, dim=0) # [B, output_size]
 
