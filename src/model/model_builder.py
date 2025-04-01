@@ -186,12 +186,7 @@ class HybridModel(nn.Module):
         self.seq_length = seq_length
     
     def forward(self, x, hidden=None):
-        # Check if input is 2D [batch, features] or 3D [batch, seq_len, features]
-        if len(x.shape) == 2:
-            # If 2D, add a sequence dimension (seq_len=1)
-            x = x.unsqueeze(1)  # [batch, features] -> [batch, 1, features]
-            
-        # Now x is guaranteed to be 3D
+        # x shape: [batch, seq_len, input_size]
         batch_size, seq_len, _ = x.shape
         
         # Traiter chaque pas de temps avec CNN

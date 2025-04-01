@@ -242,7 +242,7 @@ class AccelerationController:
         """
         # Trouver la distance minimale devant le véhicule
         forward_rays = raycasts[len(raycasts)//4:3*len(raycasts)//4]  # Rayons centraux (devant)
-        min_distance = min(forward_rays) if forward_rays else 1.0
+        min_distance = np.min(forward_rays) if len(forward_rays) > 0 else 1.0
         
         # Facteur de prudence basé sur la proximité d'obstacles
         caution_factor = min(1.0, min_distance / self.caution_distance)

@@ -91,7 +91,7 @@ def main():
         print(f"Données augmentées à {len(X)} échantillons")
     
     # 4. Diviser en ensembles d'entraînement et de validation
-    X_train, X_val, X_test, y_train, y_val, y_test = split_data(X, y, test_size=args.test_size)
+    X_train, X_val, y_train, y_val = split_data(X, y, test_size=args.test_size)
     print(f"Ensemble d'entraînement: {len(X_train)} échantillons")
     print(f"Ensemble de validation: {len(X_val)} échantillons")
     
