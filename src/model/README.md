@@ -1,286 +1,212 @@
 # RoboCar Neural Network Training
 
-This module trains neural networks with data collected from the RoboCar racing simulator for autonomous driving. It provides tools for data preprocessing, model creation, training, evaluation, and deployment.
+Ce module entraîne des réseaux de neurones avec les données collectées à partir du simulateur de course RoboCar pour la conduite autonome. Il fournit des outils pour le prétraitement des données, la création de modèles, l'entraînement, l'évaluation et le déploiement.
 
-## Overview
+## Vue d'ensemble
 
-The neural network training pipeline:
-1. Loads and preprocesses data collected from the simulation
-2. Builds and configures neural network architectures
-3. Trains models on the collected data
-4. Evaluates model performance using multiple metrics
-5. Deploys trained models for autonomous driving
+Le pipeline d'entraînement du réseau neuronal :
+1. Charge et prétraite les données collectées depuis la simulation
+2. Construit et configure des architectures de réseaux neuronaux
+3. Entraîne les modèles sur les données collectées
+4. Évalue les performances du modèle à l'aide de plusieurs métriques
+5. Déploie les modèles entraînés pour la conduite autonome
 
-## Features
+## Fonctionnalités
 
-- **Data Preprocessing**: Tools for normalizing, augmenting, and preparing collected data
-- **Model Architectures**: Multiple pre-configured neural network architectures optimized for the task
-- **Training Pipeline**: End-to-end training process with checkpointing and early stopping
-- **Evaluation Tools**: Comprehensive metrics for assessing model performance
-- **Visualization**: Tools to visualize training progress and model predictions
-- **Deployment**: Methods to export and use trained models in the simulator
+- **Prétraitement des données** : Outils pour normaliser, augmenter et préparer les données collectées
+- **Architectures de modèles** : Plusieurs architectures de réseaux neuronaux préconfigurées optimisées pour la tâche
+- **Pipeline d'entraînement** : Processus d'entraînement complet avec checkpointing et arrêt anticipé
+- **Outils d'évaluation** : Métriques complètes pour évaluer les performances du modèle
+- **Visualisation** : Outils pour visualiser la progression de l'entraînement et les prédictions du modèle
+- **Déploiement** : Méthodes pour exporter et utiliser les modèles entraînés dans le simulateur
 
-## Requirements
+## Prérequis
 
 - Python 3.7+
-- TensorFlow 2.x or PyTorch
-- NumPy, Pandas, Matplotlib
+- PyTorch
+- NumPy, Pandas
 - scikit-learn
+- Matplotlib (optionnel, pour la visualisation)
 
 ## Installation
 
-Install the required dependencies:
+Installez les dépendances requises :
 ```bash
-pip install tensorflow numpy pandas matplotlib scikit-learn
+pip install torch numpy pandas scikit-learn matplotlib
 ```
 
-## Usage
+## Utilisation
 
-### Data Preparation
+### Préparation des données
 
 ```python
 from data_preprocessor import load_session, preprocess_data, split_data
 
-# Load collected data
+# Charger les données collectées
 data = load_session('data/raw/session_1234567890.csv')
 
-# Preprocess data
+# Prétraiter les données
 X, y = preprocess_data(data, normalize=True, augment=True)
 
-# Split into training and validation sets
+# Diviser en ensembles d'entraînement et de validation
 X_train, X_val, y_train, y_val = split_data(X, y, test_size=0.2)
 ```
 
-### Model Training
+### Entraînement du modèle
 
 ```python
-from model_builder import create_cnn_model
+from model_builder import create_model
 from trainer import train_model
 
-# Create model
-model = create_cnn_model(input_shape=(10,))  # For 10 raycasts
+# Créer un modèle
+model = create_model("cnn", input_size=11, num_rays=10)  # Pour 10 raycasts + vitesse
 
-# Train model
-history = train_model(
+# Entraîner le modèle
+trained_model, history = train_model(
     model,
     X_train, y_train,
     X_val, y_val,
     epochs=100,
     batch_size=32,
-    save_path='models/cnn_model'
+    project_root="chemin/vers/projet"
 )
 ```
 
-### Model Evaluation
+### Lancement de l'entraînement via le script principal
 
-```python
-from evaluator import evaluate_model, visualize_predictions
+```bash
+# Entraînement de base avec paramètres par défaut
+python src/model/train.py
 
-# Evaluate model on test data
-metrics = evaluate_model(model, X_test, y_test)
-print(f"MSE: {metrics['mse']:.4f}, MAE: {metrics['mae']:.4f}")
-
-# Visualize predictions
-visualize_predictions(model, X_test, y_test)
+# Avec des paramètres personnalisés
+python src/model/train.py --model_type cnn --epochs 200 --batch_size 64
 ```
 
-### Model Deployment
+### Options du script d'entraînement
+
+- `--data_dir` : Répertoire contenant les fichiers CSV (défaut: "data")
+- `--model_type` : Type de modèle à créer (défaut: "simple", options: "simple", "cnn", "lstm", "multi")
+- `--epochs` : Nombre d'époques d'entraînement (défaut: 100)
+- `--batch_size` : Taille du batch (défaut: 32)
+- `--learning_rate` : Taux d'apprentissage (défaut: 0.001)
+- `--no_augment` : Désactiver l'augmentation des données
+- `--no_viz` : Désactiver la visualisation (utile si matplotlib n'est pas disponible)
+
+## Préparation des données
+
+### Chargement des données
+
+Le module collecteur enregistre les données au format CSV avec les colonnes suivantes :
+- `timestamp` : Horodatage Unix
+- `steering_input` : Entrée de direction utilisateur (-1.0 à 1.0)
+- `acceleration_input` : Entrée d'accélération utilisateur (-1.0 à 1.0)
+- `raycasts` : Tableau des distances de la voiture aux obstacles
+- `speed` : Vitesse actuelle de la voiture
+- `steering` : Angle de direction actuel
+- `position_x`, `position_y`, `position_z` : Coordonnées de position de la voiture
+
+> **Important** : Le nombre de raycasts dans vos données est déterminé par le paramètre `nbRay` dans `config/agent_config.json`. La couche d'entrée de votre réseau neuronal doit être compatible avec cette valeur. Si vous modifiez le nombre de rayons dans la configuration, vous devrez ajuster l'architecture de votre modèle en conséquence.
+
+### Étapes de prétraitement
+
+1. **Parsing** : Conversion des chaînes de raycasts en tableaux numériques
+2. **Normalisation** : Mise à l'échelle des valeurs de raycast dans la plage [0, 1]
+3. **Ingénierie des caractéristiques** : Calcul de caractéristiques supplémentaires
+4. **Augmentation** : Génération d'échantillons supplémentaires par miroir et ajout de bruit
+5. **Création de séquences** : Pour les modèles récurrents, création d'échantillons de séquences temporelles
+
+## Architectures de modèles
+
+### Modèle Simple (SimpleModel)
+
+Réseau neuronal entièrement connecté pour le traitement de base des raycasts :
 
 ```python
-from deployer import load_model, prepare_for_inference
-
-# Load saved model
-model = load_model('models/cnn_model')
-
-# Prepare for real-time inference
-inference_model = prepare_for_inference(model)
-
-# Example inference
-steering_angle = inference_model.predict(observation)
+class SimpleModel(nn.Module):
+    def __init__(self, input_size, hidden_size=64):
+        # ...
 ```
 
-## Data Preparation
+### Modèle CNN (CNNModel)
 
-### Loading Data
-
-The collector module saves data in CSV format with the following columns:
-- `timestamp`: Unix timestamp
-- `steering_input`: User steering input (-1.0 to 1.0)
-- `acceleration_input`: User acceleration input (-1.0 to 1.0)
-- `raycasts`: Array of distances from car to obstacles
-- `speed`: Current car speed
-- `steering`: Current steering angle
-- `position_x`, `position_y`, `position_z`: Car position coordinates
-
-> **Important**: The number of raycasts in your data is determined by the `nbRay` parameter in `config/agent_config.json`. Your neural network's input layer must be compatible with this value. If you change the number of rays in the configuration, you will need to adjust your model architecture accordingly.
-
-### Preprocessing Steps
-
-1. **Parsing**: Convert raycast strings to numerical arrays
-2. **Normalization**: Scale raycast values to [0, 1] range
-3. **Feature Engineering**: Calculate additional features like distance to track center
-4. **Augmentation**: Generate additional samples through mirroring and noise addition
-5. **Sequence Creation**: For recurrent models, create time sequence samples
-
-## Model Architectures
-
-When building your models, always consider the input dimensions defined by your configuration:
+Réseau neuronal convolutif pour le traitement spatial des données de raycast :
 
 ```python
-# Read the number of rays from config
-import json
-import os
-
-def get_num_rays():
-    config_path = os.path.join("config", "agent_config.json")
-    with open(config_path, 'r') as f:
-        config = json.load(f)
-        return config["agents"][0]["nbRay"]
-
-# Use this value when creating your model
-num_rays = get_num_rays()
-model = create_cnn_model(input_shape=(num_rays,))
+class CNNModel(nn.Module):
+    def __init__(self, input_size, num_rays):
+        # ...
 ```
 
-### Convolutional Neural Network (CNN)
+### Modèle LSTM (LSTMModel)
 
-Suitable for spatial processing of raycast data:
+Pour la prise de décision séquentielle en tenant compte des observations passées :
 
 ```python
-def create_cnn_model(input_shape, learning_rate=0.001):
-    model = Sequential([
-        Reshape((input_shape[0], 1), input_shape=input_shape),
-        Conv1D(16, 3, activation='relu', padding='same'),
-        Conv1D(32, 3, activation='relu', padding='same'),
-        Flatten(),
-        Dense(64, activation='relu'),
-        Dense(1)  # Steering angle output
-    ])
-    
-    model.compile(
-        optimizer=Adam(learning_rate=learning_rate),
-        loss='mse'
-    )
-    return model
+class LSTMModel(nn.Module):
+    def __init__(self, input_size, hidden_size=64, num_layers=2):
+        # ...
 ```
 
-### Recurrent Neural Network (RNN/LSTM)
+### Modèle Multi-entrées (MultiInputModel)
 
-For sequential decision making considering past observations:
+Pour combiner les données de raycast avec d'autres informations comme la vitesse :
 
 ```python
-def create_lstm_model(sequence_length, features, learning_rate=0.001):
-    model = Sequential([
-        LSTM(64, return_sequences=True, input_shape=(sequence_length, features)),
-        LSTM(32),
-        Dense(16, activation='relu'),
-        Dense(1)  # Steering angle output
-    ])
-    
-    model.compile(
-        optimizer=Adam(learning_rate=learning_rate),
-        loss='mse'
-    )
-    return model
+class MultiInputModel(nn.Module):
+    def __init__(self, raycast_size, other_feature_size):
+        # ...
 ```
 
-### Multi-Input Model
+## Bonnes pratiques d'entraînement
 
-For combining raycast data with other information like speed:
+### Recommandations pour la collecte de données
 
-```python
-def create_multi_input_model(raycast_shape, learning_rate=0.001):
-    # Raycast input branch
-    raycast_input = Input(shape=(raycast_shape,))
-    x1 = Dense(64, activation='relu')(raycast_input)
-    
-    # Speed input branch
-    speed_input = Input(shape=(1,))
-    x2 = Dense(8, activation='relu')(speed_input)
-    
-    # Merge branches
-    merged = Concatenate()([x1, x2])
-    merged = Dense(32, activation='relu')(merged)
-    output = Dense(1)(merged)  # Steering angle
-    
-    model = Model(inputs=[raycast_input, speed_input], outputs=output)
-    model.compile(
-        optimizer=Adam(learning_rate=learning_rate),
-        loss='mse'
-    )
-    return model
-```
+1. **Quantité** : Collectez au moins 30 minutes de données de conduite
+2. **Diversité** : Incluez :
+   - Plusieurs tours sur différentes pistes
+   - Vitesses variables
+   - Récupération à partir de cas limites
+   - Conduite fluide dans les virages
+3. **Qualité** : Assurez-vous d'avoir des modèles de conduite cohérents et fluides
 
-## Training Best Practices
+### Paramètres d'entraînement
 
-### Data Collection Guidelines
+- **Taille de batch** : 32-64 (plus petit pour des mises à jour de gradient plus précises)
+- **Taux d'apprentissage** : Commencez avec 0.001, réduisez si l'entraînement est instable
+- **Époques** : Utilisez un arrêt anticipé avec une patience de 10-20 époques
+- **Division de validation** : Réservez 20% des données pour la validation
 
-1. **Quantity**: Collect at least 30 minutes of driving data
-2. **Diversity**: Include:
-   - Multiple laps on different tracks
-   - Varying speeds
-   - Recovery from edge cases
-   - Smooth driving through corners
-3. **Quality**: Ensure consistent, smooth driving patterns
+### Astuces pour un meilleur entraînement
 
-### Training Parameters
+1. **Commencez simplement** : Débutez avec un petit réseau et augmentez progressivement la complexité
+2. **Régularisation** : Appliquez du dropout (0.2-0.3) pour éviter le surapprentissage
+3. **Équilibre des données** : Assurez une représentation équilibrée des virages et des segments droits
+4. **Transfer Learning** : Utilisez les poids de modèles réussis comme points de départ pour de nouveaux
 
-- **Batch Size**: 32-64 (smaller for more precise gradient updates)
-- **Learning Rate**: Start with 0.001, reduce if training is unstable
-- **Epochs**: Use early stopping with patience of 10-20 epochs
-- **Validation Split**: Reserve 20% of data for validation
+## Métriques d'évaluation
 
-### Tips for Better Training
+### Métriques numériques
 
-1. **Start Simple**: Begin with a small network and gradually increase complexity
-2. **Regularization**: Apply dropout (0.2-0.3) to prevent overfitting
-3. **Data Balance**: Ensure balanced representation of turns and straight segments
-4. **Transfer Learning**: Use weights from successful models as starting points for new ones
+- **Mean Squared Error (MSE)** : Erreur de prédiction globale
+- **Mean Absolute Error (MAE)** : Écart moyen de l'angle de direction
+- **Maximum Error** : Plus grande erreur de prédiction de direction
 
-## Evaluation Metrics
+### Performance en simulation
 
-### Numerical Metrics
+- **Taux de complétion de piste** : Pourcentage de réussite de complétion de piste
+- **Maintien de voie** : Distance moyenne par rapport au centre de la piste
+- **Fluidité** : Variation des commandes de direction (plus bas est meilleur)
+- **Capacité de récupération** : Taux de réussite dans la récupération à partir de positions limites
 
-- **Mean Squared Error (MSE)**: Overall prediction error
-- **Mean Absolute Error (MAE)**: Average steering angle deviation
-- **Maximum Error**: Largest steering prediction error
+## Structure du projet
 
-### Simulation Performance
+- `data_preprocessor.py` : Fonctions pour charger et prétraiter les données
+- `model_builder.py` : Définitions d'architectures de réseaux neuronaux
+- `trainer.py` : Pipeline d'entraînement et utilitaires
+- `evaluator.py` : Métriques d'évaluation et visualisation
+- `train.py` : Script principal pour lancer l'entraînement
 
-- **Track Completion Rate**: Percentage of successful track completions
-- **Lane Keeping**: Average distance from track center
-- **Smoothness**: Variation in steering commands (lower is better)
-- **Recovery Ability**: Success rate in recovering from edge positions
+## Intégration avec les autres modules
 
-## Common Issues and Solutions
-
-1. **Overfitting**:
-   - **Symptoms**: Low training error, high validation error
-   - **Solutions**: More data, dropout layers, data augmentation
-
-2. **Underfitting**:
-   - **Symptoms**: High training and validation error
-   - **Solutions**: Larger model, longer training, feature engineering
-
-3. **Oscillating Steering**:
-   - **Symptoms**: Car zigzags on straight segments
-   - **Solutions**: Smooth labels, add penalty for rapid steering changes
-
-4. **Failure in Specific Scenarios**:
-   - **Symptoms**: Model performs well except in certain cases
-   - **Solutions**: Collect more data for those specific scenarios
-
-## Tips for Better Autonomous Driving
-
-1. **Consistency Over Speed**: Prioritize staying on track over driving fast
-2. **Smooth Predictions**: Consider applying a moving average to steering predictions
-3. **Safety Margins**: Train the model to maintain a safe distance from track edges
-4. **Combined Approaches**: Consider ensemble methods combining multiple models
-
-## Project Structure
-
-- `data_preprocessor.py`: Functions for loading and preprocessing data
-- `model_builder.py`: Neural network architecture definitions
-- `trainer.py`: Training pipeline and utilities
-- `evaluator.py`: Evaluation metrics and visualization
-- `deployer.py`: Model export and inference utilities
+- **Module collecteur** : Utilise les données collectées par `src/collector` pour l'entraînement
+- **Module d'inférence** : Les modèles entraînés sont chargés par `src/inference` pour la conduite autonome

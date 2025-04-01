@@ -1,82 +1,82 @@
 # RoboCar Data Collector
 
-This module collects training data from the RoboCar racing simulator for supervised learning models. It manages the connection to the Unity simulation, records sensor data and user inputs, and saves everything in a format suitable for training AI models.
+Ce module collecte des données d'entraînement à partir du simulateur de course RoboCar pour les modèles d'apprentissage supervisé. Il gère la connexion à la simulation Unity, enregistre les données des capteurs et les entrées utilisateur, et sauvegarde le tout dans un format adapté à l'entraînement des modèles d'IA.
 
-## Overview
+## Vue d'ensemble
 
-The data collector:
-1. Connects to the Unity Racing Simulator
-2. Captures user inputs (keyboard or joystick)
-3. Records simulation data (raycasts, speed, steering angles, position)
-4. Saves synchronized data to CSV files for training
+Le collecteur de données :
+1. Se connecte au simulateur de course Unity
+2. Capture les entrées utilisateur (clavier ou joystick)
+3. Enregistre les données de simulation (raycasts, vitesse, angles de direction, position)
+4. Sauvegarde les données synchronisées dans des fichiers CSV pour l'entraînement
 
-## Features
+## Fonctionnalités
 
-- **Simulator Integration**: Direct connection to Unity Racing Simulator via ML-Agents
-- **Input Methods**: Support for both keyboard and joystick control
-- **Calibration Tool**: Built-in graphical joystick calibration utility
-- **Configurable Sensors**: Adjustable raycast count and field of view
-- **Real-time Feedback**: Terminal display of all sensor readings and inputs
-- **Data Persistence**: Automatic CSV generation with timestamped filenames
-- **Robust Error Handling**: Graceful recovery from disconnections and errors
+- **Intégration avec le simulateur** : Connexion directe au simulateur de course Unity via ML-Agents
+- **Méthodes d'entrée** : Support pour le contrôle au clavier et au joystick
+- **Outil de calibration** : Utilitaire graphique intégré pour la calibration du joystick
+- **Capteurs configurables** : Nombre de raycasts et champ de vision ajustables
+- **Retour en temps réel** : Affichage terminal de toutes les lectures de capteurs et entrées
+- **Persistance des données** : Génération automatique de CSV avec des noms de fichiers horodatés
+- **Gestion robuste des erreurs** : Récupération élégante des déconnexions et des erreurs
 
-## Requirements
+## Prérequis
 
 - Python 3.7+
-- Unity Racing Simulator
-- ML-Agents package
+- Simulateur de course Unity RoboCar
+- Package ML-Agents
 - pygame
 - numpy
 - pynput
 
 ## Installation
 
-1. Clone the repository:
+1. Clonez le dépôt :
    ```bash
-   git clone <repository-url>
+   git clone <url-du-dépôt>
    cd RoboCar
    ```
 
-2. Install dependencies:
+2. Installez les dépendances :
    ```bash
    pip install mlagents pygame numpy pynput
    ```
 
-3. Ensure the Unity Racing Simulator executable has execution permissions:
+3. Assurez-vous que l'exécutable du simulateur de course Unity a les permissions d'exécution :
    ```bash
    chmod +x RacingSimulatorLinux/RacingSimulator.x86_64
    ```
 
-## Usage
+## Utilisation
 
-### Starting Data Collection
+### Démarrer la collecte de données
 
-Basic usage:
+Usage basique :
 ```bash
 python src/collector/collect_data.py
 ```
 
-With joystick calibration at startup:
+Avec calibration du joystick au démarrage :
 ```bash
 python src/collector/collect_data.py --calibrate
 ```
 
-### Controls
+### Contrôles
 
-- **Keyboard**:
-  - **Arrow keys** or **WASD/ZQSD**: Control the car (steering and acceleration)
-  - **C**: Launch joystick calibration during runtime
-  - **Ctrl+C**: Stop data collection
+- **Clavier** :
+  - **Touches fléchées** ou **WASD/ZQSD** : Contrôler la voiture (direction et accélération)
+  - **C** : Lancer la calibration du joystick pendant l'exécution
+  - **Ctrl+C** : Arrêter la collecte de données
 
-- **Joystick**:
-  - **Left stick**: Control steering and acceleration
-  - Joystick is automatically detected if present
+- **Joystick** :
+  - **Stick gauche** : Contrôler la direction et l'accélération
+  - Le joystick est automatiquement détecté s'il est présent
 
 ### Configuration
 
-#### Simulation Settings
+#### Paramètres de simulation
 
-Configure graphics and physics in `config/raycast_config.json`:
+Configurez les graphismes et la physique dans `config/raycast_config.json` :
 ```json
 {
   "graphic_settings": {
@@ -88,9 +88,9 @@ Configure graphics and physics in `config/raycast_config.json`:
 }
 ```
 
-#### Agent Configuration
+#### Configuration de l'agent
 
-Configure the agent's sensors in `config/agent_config.json`:
+Configurez les capteurs de l'agent dans `config/agent_config.json` :
 ```json
 {
   "agents": [
@@ -102,54 +102,54 @@ Configure the agent's sensors in `config/agent_config.json`:
 }
 ```
 
-Parameters:
-- `fov`: Field of view in degrees (1-180)
-- `nbRay`: Number of raycasts (1-50)
+Paramètres :
+- `fov` : Champ de vision en degrés (1-180)
+- `nbRay` : Nombre de raycasts (1-50)
 
-> **Important for Neural Network Training**: The number of raycasts (`nbRay`) defined in this configuration file determines the input dimension of your neural network. Your model architecture must be compatible with this value. When training a neural network, ensure that the input layer can accept exactly this number of raycast values.
+> **Important pour l'entraînement du réseau neuronal** : Le nombre de raycasts (`nbRay`) défini dans ce fichier de configuration détermine la dimension d'entrée de votre réseau neuronal. L'architecture de votre modèle doit être compatible avec cette valeur. Lors de l'entraînement d'un réseau neuronal, assurez-vous que la couche d'entrée peut accepter exactement ce nombre de valeurs de raycast.
 
-## Data Output
+## Sortie de données
 
-### File Location
+### Emplacement des fichiers
 
-Data is saved in CSV format in the `data/raw/` directory with filenames based on timestamp:
+Les données sont enregistrées au format CSV dans le répertoire `data/raw/` avec des noms de fichiers basés sur l'horodatage :
 ```
 data/raw/session_1234567890.csv
 ```
 
-### Data Format
+### Format des données
 
-Each CSV file contains the following columns:
+Chaque fichier CSV contient les colonnes suivantes :
 
-| Column | Description |
+| Colonne | Description |
 |--------|-------------|
-| timestamp | Unix timestamp when the data was recorded |
-| steering_input | User steering input (-1.0 to 1.0) |
-| acceleration_input | User acceleration input (-1.0 to 1.0) |
-| raycasts | Array of distances from car to obstacles |
-| speed | Current speed of the car |
-| steering | Current steering angle of the car |
-| position_x | X coordinate of the car |
-| position_y | Y coordinate of the car |
-| position_z | Z coordinate of the car |
+| timestamp | Horodatage Unix au moment de l'enregistrement |
+| steering_input | Entrée de direction utilisateur (-1.0 à 1.0) |
+| acceleration_input | Entrée d'accélération utilisateur (-1.0 à 1.0) |
+| raycasts | Tableau des distances de la voiture aux obstacles |
+| speed | Vitesse actuelle de la voiture |
+| steering | Angle de direction actuel de la voiture |
+| position_x | Coordonnée X de la voiture |
+| position_y | Coordonnée Y de la voiture |
+| position_z | Coordonnée Z de la voiture |
 
-### Observation Extraction
+### Extraction des observations
 
-The data collector extracts observations from the Unity simulation using this pattern:
-- Raycasts: `obs_array[:num_rays]`
-- Speed: `obs_array[-5]`
-- Steering: `obs_array[-4]`
-- Position: `[obs_array[-3], obs_array[-2], obs_array[-1]]`
+Le collecteur de données extrait les observations de la simulation Unity en utilisant ce modèle :
+- Raycasts : `obs_array[:num_rays]`
+- Vitesse : `obs_array[-5]`
+- Direction : `obs_array[-4]`
+- Position : `[obs_array[-3], obs_array[-2], obs_array[-1]]`
 
-## Joystick Calibration
+## Calibration du joystick
 
-### Automatic Calibration
+### Calibration automatique
 
-The calibration tool will guide you to move the joystick to its extremes to determine the maximum range of motion. The calibration data is saved and applied to normalize inputs.
+L'outil de calibration vous guidera pour déplacer le joystick à ses extrêmes afin de déterminer la plage maximale de mouvement. Les données de calibration sont enregistrées et appliquées pour normaliser les entrées.
 
-### Manual Configuration
+### Configuration manuelle
 
-Calibration data is stored in `src/collector/joystick_calibration.json` and can be manually edited if needed:
+Les données de calibration sont stockées dans `src/collector/joystick_calibration.json` et peuvent être modifiées manuellement si nécessaire :
 ```json
 {
   "steering": {"min": -1.0, "max": 1.0},
@@ -157,33 +157,34 @@ Calibration data is stored in `src/collector/joystick_calibration.json` and can 
 }
 ```
 
-## Troubleshooting
+## Dépannage
 
-### Common Issues
+### Problèmes courants
 
-1. **Unity executable not found**:
-   - Ensure the simulator is in the correct location: `RacingSimulatorLinux/RacingSimulator.x86_64`
+1. **Exécutable Unity introuvable** :
+   - Assurez-vous que le simulateur est au bon emplacement : `RacingSimulatorLinux/RacingSimulator.x86_64`
 
-2. **Joystick not detected**:
-   - Connect the joystick before starting the program
-   - Run `pygame.joystick.Joystick(0).get_name()` to verify detection
+2. **Joystick non détecté** :
+   - Connectez le joystick avant de démarrer le programme
+   - Exécutez `pygame.joystick.Joystick(0).get_name()` pour vérifier la détection
 
-3. **Port already in use**:
-   - If you see "port already in use" errors, ensure no other instances are running
-   - Default port is 5004, can be changed in the code if needed
+3. **Port déjà en utilisation** :
+   - Si vous voyez des erreurs "port already in use", assurez-vous qu'aucune autre instance n'est en cours d'exécution
+   - Le port par défaut est 5004, peut être modifié dans le code si nécessaire
 
-4. **Missing observations**:
-   - Verify that `nbRay` in config matches the simulator settings
-   - Check Unity logs for any errors
+4. **Observations manquantes** :
+   - Vérifiez que `nbRay` dans la configuration correspond aux paramètres du simulateur
+   - Consultez les logs Unity pour toute erreur
 
-## Project Structure
+## Structure du projet
 
-- `collect_data.py`: Main script for data collection
-- `utils_collector.py`: Input processing utilities
-- `joystick_calibrator.py`: Joystick calibration functions
-- `ui_components.py`: UI for joystick calibration
-- `config/`: Configuration files for the simulator and agent
+- `collect_data.py` : Script principal pour la collecte de données
+- `utils_collector.py` : Utilitaires de traitement des entrées
+- `joystick_calibrator.py` : Fonctions de calibration du joystick
+- `ui_components.py` : Interface utilisateur pour la calibration du joystick
+- `config/` : Fichiers de configuration pour le simulateur et l'agent
 
-## License
+## Intégration avec les autres modules
 
-[Include license information here]
+- **Module de modèle** : Les données collectées servent à entraîner les réseaux de neurones dans `src/model`
+- **Module d'inférence** : Les modèles entraînés sur ces données sont utilisés dans `src/inference` pour la conduite autonome

@@ -1,101 +1,118 @@
 # RoboCar Autonomous Driving Inference
 
-This module loads trained neural network models and uses them for autonomous driving in the RoboCar racing simulator. It connects to the Unity simulation, processes sensor data, and uses the model to generate driving commands.
+Ce module charge les modèles de réseaux neuronaux entraînés et les utilise pour la conduite autonome dans le simulateur de course RoboCar. Il se connecte à la simulation Unity, traite les données des capteurs et utilise le modèle pour générer des commandes de conduite.
 
-## Overview
+## Vue d'ensemble
 
-The inference module:
-1. Loads the trained neural network model
-2. Connects to the Unity Racing Simulator
-3. Processes sensor readings (raycasts, speed, position)
-4. Generates steering and acceleration commands
-5. Sends commands to drive the car autonomously
+Le module d'inférence :
+1. Charge le modèle de réseau neuronal entraîné
+2. Se connecte au simulateur de course Unity
+3. Traite les lectures des capteurs (raycasts, vitesse, position)
+4. Génère les commandes de direction et d'accélération
+5. Envoie les commandes pour conduire la voiture de manière autonome
 
-## Features
+## Fonctionnalités
 
-- **Model Loading**: Loads trained PyTorch models with metadata
-- **Real-time Inference**: Fast processing of sensor data
-- **Steering Smoothing**: Reduces oscillations with temporal smoothing
-- **Performance Monitoring**: Tracks FPS and inference times
-- **Configuration Compatibility**: Ensures model matches raycast configuration
+- **Chargement de modèle** : Charge les modèles PyTorch entraînés avec métadonnées
+- **Inférence en temps réel** : Traitement rapide des données des capteurs
+- **Lissage de direction** : Réduit les oscillations avec lissage temporel
+- **Surveillance des performances** : Suit les FPS et les temps d'inférence
+- **Compatibilité de configuration** : S'assure que le modèle correspond à la configuration des raycasts
 
-## Requirements
+## Prérequis
 
 - Python 3.7+
-- Unity Racing Simulator
+- Simulateur de course Unity RoboCar
 - PyTorch
-- ML-Agents package
+- Package ML-Agents
 - NumPy
 
-## Usage
+## Utilisation
 
-### Basic Usage
+### Usage de base
 
-Start autonomous driving with the default model:
+Démarrez la conduite autonome avec le modèle par défaut :
 
 ```bash
 python src/inference/run_model.py
 ```
 
-### Controls
+### Contrôles
 
-- **Ctrl+C**: Stop the autonomous driving mode
+- **Ctrl+C** : Arrêter le mode de conduite autonome
 
-### Model Selection
+### Sélection du modèle
 
-The system automatically loads the model file `model_checkpoint.pth` from the project root. This is the default output path when training a model with the training module.
+Le système charge automatiquement le fichier modèle `model_checkpoint.pth` à partir de la racine du projet. C'est le chemin de sortie par défaut lors de l'entraînement d'un modèle avec le module d'entraînement.
 
-## Implementation Details
+## Détails d'implémentation
 
-### Observation Processing
+### Traitement des observations
 
-The inference module processes observations from the Unity simulation in the same way they were processed during training:
+Le module d'inférence traite les observations de la simulation Unity de la même manière qu'elles ont été traitées pendant l'entraînement :
 
-1. Raycasts are extracted and normalized to [0,1] range
-2. Vehicle speed is normalized
-3. Features are combined into an input tensor for the model
+1. Les raycasts sont extraits et normalisés dans la plage [0,1]
+2. La vitesse du véhicule est normalisée
+3. Les caractéristiques sont combinées en un tenseur d'entrée pour le modèle
 
-### Steering Smoothing
+### Lissage de direction
 
-To prevent erratic steering behavior, the module implements smoothing:
+Pour éviter un comportement de direction erratique, le module implémente un lissage :
 
-1. Maintains a history of recent steering predictions
-2. Applies a moving average to smooth transitions
-3. Limits the maximum steering change per frame
+1. Maintient un historique des prédictions de direction récentes
+2. Applique une moyenne mobile pour lisser les transitions
+3. Limite le changement maximal de direction par image
 
-### Performance Optimization
+### Optimisation des performances
 
-For real-time control, the inference module:
+Pour un contrôle en temps réel, le module d'inférence :
 
-1. Minimizes preprocessing overhead
-2. Uses CPU inference to avoid GPU transfer delays
-3. Monitors frame rates to ensure responsive control
+1. Minimise les frais généraux de prétraitement
+2. Utilise l'inférence CPU pour éviter les délais de transfert GPU
+3. Surveille les taux d'images pour assurer un contrôle réactif
 
-## Troubleshooting
+## Classes et méthodes principales
 
-### Common Issues
+### Dans `run_model.py`
+- `load_model()` : Charge le modèle entraîné avec ses métadonnées
+- `process_observations()` : Traite et normalise les observations du simulateur
+- `run_inference_loop()` : Boucle principale qui exécute l'inférence en temps réel
 
-1. **Model Loading Errors**:
-   - Ensure the model file exists at the project root
-   - Verify the model was trained with compatible data
+### Dans `utils_inference.py`
+- `smooth_steering()` : Applique un algorithme de lissage aux prédictions de direction
+- `normalize_observations()` : Normalise les valeurs d'observation pour correspondre à l'entraînement
+- `PerformanceMonitor` : Classe pour surveiller et enregistrer les performances d'inférence
 
-2. **Simulator Connection Issues**:
-   - Check that the simulator is running and on port 5004
-   - Verify permissions on the simulator executable
+## Dépannage
 
-3. **Erratic Driving Behavior**:
-   - Try increasing the steering smoothing parameters
-   - Collect more training data in problematic scenarios
-   - Retrain the model with more diverse data
+### Problèmes courants
+
+1. **Erreurs de chargement de modèle** :
+   - Assurez-vous que le fichier modèle existe à la racine du projet
+   - Vérifiez que le modèle a été entraîné avec des données compatibles
+
+2. **Problèmes de connexion au simulateur** :
+   - Vérifiez que le simulateur est en cours d'exécution et sur le port 5004
+   - Vérifiez les permissions sur l'exécutable du simulateur
+
+3. **Comportement de conduite erratique** :
+   - Essayez d'augmenter les paramètres de lissage de direction
+   - Collectez plus de données d'entraînement dans des scénarios problématiques
+   - Réentraînez le modèle avec des données plus diverses
 
 ## Architecture
 
-### Model Compatibility
+### Compatibilité du modèle
 
-The model input size must match the number of raycasts in your configuration:
+La taille d'entrée du modèle doit correspondre au nombre de raycasts dans votre configuration :
 
 ```
-model_input_size = num_rays + 1  # Rays + speed
+model_input_size = num_rays + 1  # Rayons + vitesse
 ```
 
-If you change the number of raycasts in your configuration, you must retrain your model.
+Si vous changez le nombre de raycasts dans votre configuration, vous devez réentraîner votre modèle.
+
+## Intégration avec les autres modules
+
+- **Module collecteur** : Utilise la même structure de simulateur et de données que `src/collector`
+- **Module de modèle** : Charge les modèles entraînés créés par `src/model`
