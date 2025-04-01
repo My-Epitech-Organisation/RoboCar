@@ -2,7 +2,7 @@
 RacingSimulatorLinux/
 .venv
 docs
-data
+data/raw
 __pycache__
 .vscode
 
