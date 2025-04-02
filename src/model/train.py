@@ -24,9 +24,10 @@ from config_loader import load_train_config
 def main():
     # Configuration des arguments
     parser = argparse.ArgumentParser(description='Entraînement de modèle RoboCar')
-    # parser.add_argument('--data_dir', type=str, default='data/raw',
-    parser.add_argument('--data_dir', type=str, default='data/Track1',
-                        help='Répertoire des données brutes')
+    parser.add_argument('--data_dir', type=str, default='data',
+                        help='Répertoire de base des données')
+    parser.add_argument('--tracks', type=str, nargs='+', default=['Track1', 'Track2', 'Track3'],
+                        help='Liste des pistes à utiliser pour l\'entraînement (sous-répertoires de data_dir)')
     parser.add_argument('--model_type', type=str, default='multi',
                         choices=['simple', 'cnn', 'lstm', 'hybrid', 'multi'],
                         help='Type de modèle à entraîner')
@@ -65,21 +66,34 @@ def main():
 
     # 1. Charger et préparer les données
     print("Chargement des données...")
-    csv_files = [os.path.join(args.data_dir, f) for f in os.listdir(args.data_dir) if f.endswith('.csv')]
 
-    if not csv_files:
-        print(f"Aucun fichier CSV trouvé dans {args.data_dir}")
+    # Chargement des données de toutes les pistes spécifiées
+    all_data = []
+    total_files = 0
+
+    for track in args.tracks:
+        track_dir = os.path.join(args.data_dir, track)
+        if os.path.exists(track_dir):
+            csv_files = [os.path.join(track_dir, f) for f in os.listdir(track_dir) if f.endswith('.csv')]
+            total_files += len(csv_files)
+
+            if csv_files:
+                print(f"Chargement des données de la piste {track} ({len(csv_files)} fichiers)")
+                for csv_file in csv_files:
+                    print(f"  Traitement de {os.path.basename(csv_file)}")
+                    data = load_session(csv_file)
+                    all_data.append(data)
+            else:
+                print(f"Aucun fichier CSV trouvé dans {track_dir}")
+        else:
+            print(f"Répertoire de piste non trouvé: {track_dir}")
+
+    if not all_data:
+        print(f"Aucun fichier CSV trouvé dans les répertoires de pistes spécifiés")
         return
 
-    # Charger et combiner les données
-    all_data = []
-    for csv_file in csv_files:
-        print(f"  Traitement de {os.path.basename(csv_file)}")
-        data = load_session(csv_file)
-        all_data.append(data)
-
     data = pd.concat(all_data, ignore_index=True)
-    print(f"Total de {len(data)} échantillons chargés")
+    print(f"Total de {len(data)} échantillons chargés depuis {total_files} fichiers")
 
     # 2. Prétraiter les données
     print("Prétraitement des données...")
