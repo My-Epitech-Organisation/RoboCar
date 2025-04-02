@@ -145,6 +145,22 @@ def load_model(model_path='model_checkpoint.pth'):
                 model_type = 'simple'
                 print(f"[INFO] Detected model type from weights: {model_type}")
                 
+        # Normalize model type name
+        if model_type:
+            # Convert to lowercase and handle variations
+            model_type = model_type.lower()
+            if model_type == 'multiinput' or model_type == 'multiinputmodel':
+                model_type = 'multi'
+                print(f"[INFO] Normalized model type from '{model_type}' to 'multi'")
+            elif model_type == 'simplemodel':
+                model_type = 'simple'
+            elif model_type == 'cnnmodel':
+                model_type = 'cnn'
+            elif model_type == 'lstmmodel':
+                model_type = 'lstm'
+            elif model_type == 'hybridmodel':
+                model_type = 'hybrid'
+                
         # Check if the model was trained with only raycasts
         has_other_branch = any('other_branch' in k for k in model_state.keys())
         uses_only_raycasts = not has_other_branch
