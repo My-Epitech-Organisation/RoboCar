@@ -24,6 +24,12 @@ key_states = {
     'c': False  # For calibration
 }
 
+# Global variable to track current joystick control mode
+# False = dual stick mode (default, left=steering, right=acceleration)
+# True = single stick mode (original, left stick for both)
+single_stick_mode = False
+last_y_button_state = False
+
 
 def on_press(key):
     """Callback when a key is pressed."""
@@ -177,6 +183,8 @@ def get_joystick_input(joystick):
     Returns:
         tuple: (steering, acceleration) - Values between -1.0 and 1.0
     """
+    global single_stick_mode, last_y_button_state
+    
     if joystick is None:
         return 0.0, 0.0
 
@@ -195,10 +203,41 @@ def get_joystick_input(joystick):
     # Deadzone to avoid involuntary movements
     deadzone = 0.1
 
+    # Check Y button to toggle control mode
     try:
-        # Axis 0 (horizontal) for steering, axis 1 (vertical) for acceleration
+        # Assuming Y button is button 2 (index might need adjustment based on your controller)
+        current_y_state = joystick.get_button(2)
+        
+        # Toggle mode on button press (not hold)
+        if current_y_state and not last_y_button_state:
+            single_stick_mode = not single_stick_mode
+            mode_name = "Single Stick" if single_stick_mode else "Dual Stick"
+            print(f"[INFO] Switched to {mode_name} control mode")
+            
+        last_y_button_state = current_y_state
+    except (pygame.error, IndexError):
+        # If we can't read the button, just continue with current mode
+        pass
+
+    try:
+        # In both modes, steering comes from left stick horizontal
         steering_axis = joystick.get_axis(0)
-        accel_axis = joystick.get_axis(1)
+        
+        if single_stick_mode:
+            # Original mode: left stick vertical for acceleration
+            accel_axis = joystick.get_axis(1)
+        else:
+            # Dual stick mode: right stick vertical for acceleration
+            # Typically right stick vertical is axis 3 or 4 depending on the controller
+            try:
+                accel_axis = joystick.get_axis(3)  # Try common right stick vertical index
+            except (pygame.error, IndexError):
+                try:
+                    accel_axis = joystick.get_axis(4)  # Alternative right stick vertical index
+                except (pygame.error, IndexError):
+                    # Fall back to left stick if right stick not available
+                    accel_axis = joystick.get_axis(1)
+                    print("[WARNING] Right stick not detected, falling back to left stick")
     except (pygame.error, IndexError):
         print("[ERROR] Unable to read joystick axes")
         return 0.0, 0.0

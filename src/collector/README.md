@@ -69,7 +69,13 @@ python src/collector/collect_data.py --calibrate
   - **Ctrl+C** : Arrêter la collecte de données
 
 - **Joystick** :
-  - **Stick gauche** : Contrôler la direction et l'accélération
+  - **Mode Dual Stick (par défaut)** :
+    - **Stick gauche** : Contrôler la direction (gauche/droite)
+    - **Stick droit** : Contrôler l'accélération (haut/bas)
+    - **Bouton Y** : Basculer entre les modes de contrôle
+  - **Mode Single Stick (traditionnel)** :
+    - **Stick gauche** : Contrôler la direction et l'accélération
+    - **Bouton Y** : Basculer entre les modes de contrôle
   - Le joystick est automatiquement détecté s'il est présent
 
 ### Configuration

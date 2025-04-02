@@ -14,7 +14,7 @@ sudo make altinstall
 ```
 
 ```bash
-sudo dnf install conda
+sudo dnf install cuda
 ```
 
 ### Contributors
