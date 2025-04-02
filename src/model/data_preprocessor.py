@@ -270,7 +270,7 @@ def preprocess_data(data, normalize=True, use_only_raycasts=False):
     # Normaliser les raycasts si demandé
     if normalize:
         # Normalisation des raycasts (limiter entre 0-1)
-        max_raycast = 20.0  # Distance maximale des raycasts
+        max_raycast = 260.0  # Distance maximale des raycasts
         X_raycasts = np.clip(X_raycasts / max_raycast, 0, 1)
     
     # Si on utilise uniquement les raycasts

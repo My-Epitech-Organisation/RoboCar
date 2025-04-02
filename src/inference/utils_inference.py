@@ -70,7 +70,7 @@ def smooth_steering(new_value, history, max_history=3, max_change=0.1):
     return avg_value
 
 
-def normalize_observations(obs_array, num_rays, max_raycast=20.0, max_speed=30.0):
+def normalize_observations(obs_array, num_rays, max_raycast=260.0, max_speed=30.0):
     """
     Normalize observation values to match training data normalization.
     

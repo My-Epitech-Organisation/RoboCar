@@ -186,13 +186,18 @@ def train_model(model, X_train, y_train, X_val, y_val, epochs=100, batch_size=32
         # Sauvegarder le meilleur modèle
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            # Déterminer si le modèle utilise uniquement des raycasts
+            use_only_raycasts = hasattr(model, 'has_other_features') and not model.has_other_features
+            
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'val_loss': val_loss,
                 'input_size': X_train.shape[1],
-                'num_rays': X_train.shape[1] - 1,  # Supposant que le dernier est la vitesse
+                # Correction - ne pas soustraire 1 si on utilise seulement les raycasts
+                'num_rays': X_train.shape[1] if use_only_raycasts else X_train.shape[1] - 1,
+                'model_type': model.__class__.__name__.lower().replace('model', '')
             }, best_model_path)
             patience_counter = 0
             print(f"Meilleur modèle sauvegardé (perte: {val_loss:.4f})")

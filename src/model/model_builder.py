@@ -130,8 +130,8 @@ class MultiInputModel(nn.Module):
         cnn_output_size = 32 * (num_rays - 1)
         
         # Branche pour les autres caractéristiques si elles existent
-        self.has_other_features = other_features > 0
-        if self.has_other_features:
+        if other_features > 0:
+            self.has_other_features = True
             self.other_branch = nn.Sequential(
                 nn.Linear(other_features, hidden_size // 2),
                 nn.ReLU(),
@@ -140,6 +140,7 @@ class MultiInputModel(nn.Module):
             # Taille combinée des sorties des deux branches
             combined_size = cnn_output_size + (hidden_size // 2)
         else:
+            self.has_other_features = False
             combined_size = cnn_output_size
         
         # Couches communes après concaténation
@@ -153,26 +154,6 @@ class MultiInputModel(nn.Module):
             nn.Linear(hidden_size // 2, 2)  # 2 sorties: direction et accélération
         )
     
-    def load_state_dict(self, state_dict, strict=True):
-        """
-        Override the load_state_dict method to handle different model configurations.
-        If strict=False, missing keys in the state_dict won't cause an error.
-        """
-        if strict:
-            # Check if the state_dict has the other_branch parameters
-            has_other_branch = any('other_branch' in k for k in state_dict.keys())
-            
-            # If the state dictionary doesn't have other_branch parameters but our model does,
-            # we need to create a new model without other_branch
-            if not has_other_branch and self.has_other_features:
-                print("[INFO] Model was trained without other features, adjusting model architecture")
-                # Create a dummy module to avoid missing key errors
-                self.other_branch = nn.Sequential()
-                self.has_other_features = False
-        
-        # Call the parent class implementation
-        return super().load_state_dict(state_dict, strict=False)
-
     def forward(self, x):
         # Diviser l'entrée en raycasts et autres caractéristiques
         if self.has_other_features:

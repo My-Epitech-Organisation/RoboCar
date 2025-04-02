@@ -236,8 +236,12 @@ def process_observations(obs_array, num_rays, use_only_raycasts=False):
     raycasts = obs_array[:num_rays]
     
     # Normalize raycasts to [0, 1] range
-    max_raycast_value = 20.0  # Max value used in training
+    max_raycast_value = 260.0  # Max value used in training
     raycasts_normalized = np.clip(raycasts / max_raycast_value, 0, 1)
+    
+    # Print raycast statistics
+    print(f"Raycast min/max/mean: {np.min(raycasts):.4f}/{np.max(raycasts):.4f}/{np.mean(raycasts):.4f}")
+    print(f"First 5 raycast values: {raycasts[:5]}")
     
     # Extract other observations
     try:
