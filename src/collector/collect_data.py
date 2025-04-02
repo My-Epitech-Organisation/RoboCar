@@ -285,8 +285,9 @@ def collect_data_loop(env, behavior_name, output_file, joystick):
 
         while True:
             if not pygame.get_init():
-                print("[INFO] Reinitializing pygame...")
                 pygame.init()
+            if not pygame.display.get_init():
+                pygame.display.init()
 
             pygame.event.pump()
 

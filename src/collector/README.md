@@ -66,6 +66,8 @@ python src/collector/collect_data.py --calibrate
 - **Clavier** :
   - **Touches fléchées** ou **WASD/ZQSD** : Contrôler la voiture (direction et accélération)
   - **C** : Lancer la calibration du joystick pendant l'exécution
+  - **V** : Basculer entre le mode manette et le mode volant/pédalier
+  - **I** : Ouvrir l'interface de sélection des périphériques d'entrée
   - **Ctrl+C** : Arrêter la collecte de données
 
 - **Joystick** :
@@ -77,6 +79,17 @@ python src/collector/collect_data.py --calibrate
     - **Stick gauche** : Contrôler la direction et l'accélération
     - **Bouton Y** : Basculer entre les modes de contrôle
   - Le joystick est automatiquement détecté s'il est présent
+
+- **Volant et Pédalier Trust GXT 570** :
+  - **Volant** : Contrôler la direction
+  - **Pédale droite** : Accélérer
+  - **Pédale gauche** : Freiner
+  - Activez ce mode avec la touche **V** du clavier
+
+- **Configuration personnalisée** :
+  - Appuyez sur **I** pour ouvrir l'interface de sélection des périphériques
+  - Sélectionnez un périphérique distinct pour la direction et l'accélération
+  - Combinez différents périphériques (ex: volant pour direction, clavier pour accélération)
 
 ### Configuration
 

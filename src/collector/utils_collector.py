@@ -21,7 +21,9 @@ key_states = {
     'd': False,
     'z': False,
     's': False,
-    'c': False  # For calibration
+    'c': False,  # For calibration
+    'v': False,  # For wheel mode toggle
+    'i': False   # For input selector
 }
 
 # Global variable to track current joystick control mode
@@ -29,6 +31,14 @@ key_states = {
 # True = single stick mode (original, left stick for both)
 single_stick_mode = False
 last_y_button_state = False
+
+# Global variable to track wheel mode
+wheel_mode = False
+
+# Global variables for custom input configuration
+steering_device = None
+acceleration_device = None
+show_input_selector = False
 
 
 def on_press(key):
@@ -51,10 +61,22 @@ def on_press(key):
 
 def on_release(key):
     """Callback when a key is released."""
+    global wheel_mode, show_input_selector
+    
     try:
         k = key.char.lower()
         if k in key_states:
             key_states[k] = False
+            
+            # Check for wheel mode toggle on "v" release
+            if k == 'v':
+                wheel_mode = not wheel_mode
+                print(f"[INFO] {'Enabled' if wheel_mode else 'Disabled'} wheel and pedals mode")
+                
+            # Check for input selector toggle on "i" release
+            elif k == 'i':
+                show_input_selector = True
+                print("[INFO] Input device selector requested")
     except AttributeError:
         # Special keys
         if key == keyboard.Key.left:
@@ -173,6 +195,77 @@ class JoystickCalibration:
 joystick_calibration = JoystickCalibration()
 
 
+def get_wheel_pedals_input(joystick):
+    """
+    Read Trust GXT 570 wheel and pedals inputs.
+    
+    Args:
+        joystick: Pygame joystick instance representing the wheel
+        
+    Returns:
+        tuple: (steering, acceleration) - Values between -1.0 and 1.0
+    """
+    if joystick is None:
+        return 0.0, 0.0
+        
+    # Check that joystick is initialized
+    try:
+        if not joystick.get_init():
+            try:
+                joystick.init()
+                print("[INFO] Wheel automatically reinitialized")
+            except pygame.error:
+                return 0.0, 0.0
+    except (pygame.error, AttributeError):
+        # Disconnected or error with wheel
+        return 0.0, 0.0
+        
+    try:
+        # Deadzone for wheel
+        deadzone = 0.05
+        
+        # Steering from wheel rotation (axis 0)
+        steering_axis = joystick.get_axis(0)
+        
+        # Get brake pedal and accelerator pedal
+        if "GXT 570" in joystick.get_name() or "Trust" in joystick.get_name():
+            brake_pedal = joystick.get_axis(2)
+            accelerator_pedal = joystick.get_axis(1)
+        else:
+            brake_pedal = joystick.get_axis(1)
+            accelerator_pedal = joystick.get_axis(2)
+        
+        # Apply deadzone to steering
+        if abs(steering_axis) < deadzone:
+            steering_axis = 0.0
+            
+        # Calculate acceleration (accelerator - brake)
+        # Note: Pedals often return -1 when fully released and 1 when fully pressed
+        # We need to map these to a range where:
+        # -1 = full brake
+        # 0 = no input
+        # 1 = full acceleration
+        
+        # Convert from [-1, 1] to [0, 1] range for each pedal
+        # Where 0 = released, 1 = fully pressed
+        brake_value = (brake_pedal + 1) / 2
+        accelerator_value = (accelerator_pedal + 1) / 2
+        
+        # Calculate final acceleration value (-1 to 1)
+        # Full brake takes precedence over accelerator
+        acceleration = accelerator_value - brake_value
+        
+        # Apply calibration
+        steering = joystick_calibration.apply_calibration(steering_axis, "steering")
+        accel = acceleration  # The acceleration is already in the right range
+        
+        return steering, accel
+        
+    except (pygame.error, IndexError) as e:
+        print(f"[ERROR] Unable to read wheel inputs: {e}")
+        return 0.0, 0.0
+
+
 def get_joystick_input(joystick):
     """
     Read joystick inputs and return commands.
@@ -256,6 +349,86 @@ def get_joystick_input(joystick):
     return steering, accel
 
 
+def get_device_input(device, input_type):
+    """
+    Get input from a specific device.
+    
+    Args:
+        device: Device information dictionary
+        input_type: "steering" or "acceleration"
+        
+    Returns:
+        float: Input value between -1.0 and 1.0
+    """
+    if not device:
+        return 0.0
+        
+    if device["type"] == "keyboard":
+        steering, acceleration = get_keyboard_input()
+        return steering if input_type == "steering" else acceleration
+        
+    if "instance" not in device:
+        # Try to initialize the device if it's a joystick
+        if isinstance(device["id"], int):
+            try:
+                joystick = pygame.joystick.Joystick(device["id"])
+                joystick.init()
+                device["instance"] = joystick
+            except (pygame.error, IndexError):
+                return 0.0
+                
+    joystick = device.get("instance")
+    if not joystick:
+        return 0.0
+        
+    # Handle different device types
+    if device["type"] == "wheel_gxt":
+        steering, acceleration = get_wheel_pedals_input(joystick)
+        return steering if input_type == "steering" else acceleration
+    elif device["type"] == "wheel_logitech":
+        # Similar to GXT but might have different axis mapping
+        steering, acceleration = get_wheel_pedals_input(joystick)
+        return steering if input_type == "steering" else acceleration
+    else:
+        # Generic joystick
+        steering, acceleration = get_joystick_input(joystick)
+        return steering if input_type == "steering" else acceleration
+
+
+def show_input_device_selector(joystick):
+    """
+    Show the input device selector GUI.
+    
+    Args:
+        joystick: Current joystick instance
+        
+    Returns:
+        tuple: Updated steering_device and acceleration_device
+    """
+    global steering_device, acceleration_device, show_input_selector
+    
+    from input_selector import InputDeviceSelector
+    
+    # Initialize the selector
+    selector = InputDeviceSelector()
+    
+    # Run the selector
+    selected_steering, selected_acceleration = selector.run()
+    
+    if selected_steering and selected_acceleration:
+        steering_device = selected_steering
+        acceleration_device = selected_acceleration
+        print(f"[INFO] Input configuration updated:")
+        print(f"  - Steering: {steering_device['name']}")
+        print(f"  - Acceleration: {selected_acceleration['name']}")
+    
+    # Reset the flag
+    show_input_selector = False
+    
+    # Return both devices
+    return steering_device, acceleration_device
+
+
 def parse_user_input(joystick=None):
     """
     Read user inputs and convert to steering commands.
@@ -266,11 +439,35 @@ def parse_user_input(joystick=None):
     Returns:
         tuple: (steering, acceleration) - Values between -1.0 and 1.0
     """
-    # Read keyboard inputs
+    global wheel_mode, show_input_selector, steering_device, acceleration_device
+    
+    # Check if we need to show the input selector
+    if show_input_selector:
+        steering_device, acceleration_device = show_input_device_selector(joystick)
+        # Reinitialize selected joystick instances
+        if steering_device and "instance" in steering_device and steering_device["instance"]:
+            steering_device["instance"].quit()
+            steering_device["instance"].init()
+        if acceleration_device and "instance" in acceleration_device and acceleration_device["instance"]:
+            acceleration_device["instance"].quit()
+            acceleration_device["instance"].init()
+    
+    # If we have custom device configuration
+    if steering_device or acceleration_device:
+        steering = get_device_input(steering_device, "steering")
+        acceleration = get_device_input(acceleration_device, "acceleration")
+        return steering, acceleration
+    
+    # Default behavior if no custom configuration
     steering, acceleration = get_keyboard_input()
 
-    # If joystick available and keyboard not used, use joystick
+    # If joystick available and keyboard not used
     if joystick is not None and steering == 0.0 and acceleration == 0.0:
-        steering, acceleration = get_joystick_input(joystick)
+        if wheel_mode:
+            # Use wheel and pedals mode
+            steering, acceleration = get_wheel_pedals_input(joystick)
+        else:
+            # Use standard joystick controls
+            steering, acceleration = get_joystick_input(joystick)
 
     return steering, acceleration
