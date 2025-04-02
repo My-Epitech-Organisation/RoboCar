@@ -1,7 +1,6 @@
 # Personal files
 RacingSimulatorLinux/
 .venv
-docs
 data/raw
 __pycache__
 .vscode

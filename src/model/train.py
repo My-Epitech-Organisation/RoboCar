@@ -1,139 +1,170 @@
-import torch
-import ast
-import pandas as pd
-import numpy as np
-import json
-from torch.utils.data import Dataset, DataLoader
-import torch.optim as optim
-import torch.nn as nn
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
+"""
+Main training script for RoboCar neural network.
+
+This script:
+1. Loads and preprocesses data
+2. Configures and creates a neural network model
+3. Trains the model on collected data
+4. Evaluates performance and saves the model
+"""
+
 import os
+import argparse
+import numpy as np
+import torch
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import datetime
+from data_preprocessor import load_session, preprocess_data, split_data, augment_data
+from model_builder import create_model
+from trainer import train_model
+from evaluator import ModelEvaluator
+from config_loader import load_train_config
 
-# Fonction pour choisir un fichier d'entraînement
-def choisir_fichier_entraînement():
-    fichiers = [f for f in os.listdir('./data/Track1') if f.endswith('.csv')]
-    print("Choisissez un fichier d'entraînement parmi les suivants :")
-    for i, fichier in enumerate(fichiers, start=1):
-        print(f"{i}. {fichier}")
-    
-    choix = int(input("Entrez le numéro du fichier : ")) - 1
-    fichier_choisi = fichiers[choix]
-    return os.path.join('./data/Track1', fichier_choisi)
+def main():
+    # Configuration des arguments
+    parser = argparse.ArgumentParser(description='Entraînement de modèle RoboCar')
+    # parser.add_argument('--data_dir', type=str, default='data/raw',
+    parser.add_argument('--data_dir', type=str, default='data/Track1',
+                        help='Répertoire des données brutes')
+    parser.add_argument('--model_type', type=str, default='multi',
+                        choices=['simple', 'cnn', 'lstm', 'hybrid', 'multi'],
+                        help='Type de modèle à entraîner')
+    parser.add_argument('--epochs', type=int, default=100,
+                        help='Nombre d\'époques d\'entraînement')
+    parser.add_argument('--batch_size', type=int, default=32,
+                        help='Taille des batchs')
+    parser.add_argument('--learning_rate', type=float, default=0.001,
+                        help='Taux d\'apprentissage')
+    parser.add_argument('--test_size', type=float, default=0.2,
+                        help='Proportion des données pour la validation')
+    parser.add_argument('--augment', action='store_true', default=True,
+                        help='Activer l\'augmentation des données')
+    parser.add_argument('--no_augment', action='store_false', dest='augment',
+                        help='Désactiver l\'augmentation des données')
+    parser.add_argument('--seed', type=int, default=42,
+                        help='Seed pour la reproductibilité')
+    parser.add_argument('--output_dir', type=str, default='models',
+                        help='Répertoire de sortie pour les modèles')
 
-# Charger et préparer les données
-fichier_entraînement = choisir_fichier_entraînement()
-data = pd.read_csv(fichier_entraînement)
+    args = parser.parse_args()
 
-data['raycasts'] = data['raycasts'].apply(ast.literal_eval)
+    # Garantir la reproductibilité
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(args.seed)
 
-for i in range(10):
-    data['raycast_{}'.format(i)] = data['raycasts'].apply(lambda x: x[i] if isinstance(x, list) else None)
+    # Créer le répertoire de sortie
+    os.makedirs(args.output_dir, exist_ok=True)
 
-features = data[['steering_input', 'acceleration_input'] + [f'raycast_{i}' for i in range(10)] + ['position_x', 'position_y', 'position_z']].values
-target = data[['speed', 'steering']].values
+    # Timestamp pour l'identifiant unique de cette session
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join(args.output_dir, f"{args.model_type}_{timestamp}")
+    os.makedirs(run_dir, exist_ok=True)
 
-# Normaliser les données (très important pour les réseaux neuronaux)
-scaler = StandardScaler()
-features = scaler.fit_transform(features)
+    # 1. Charger et préparer les données
+    print("Chargement des données...")
+    csv_files = [os.path.join(args.data_dir, f) for f in os.listdir(args.data_dir) if f.endswith('.csv')]
 
-# Sauvegarder les valeurs de normalisation pour l'inférence
-scaler_values = {
-    "means": scaler.mean_.tolist(),
-    "stds": scaler.scale_.tolist()
-}
+    if not csv_files:
+        print(f"Aucun fichier CSV trouvé dans {args.data_dir}")
+        return
 
-with open('scaler_values.json', 'w') as f:
-    json.dump(scaler_values, f)
-print("Valeurs de normalisation sauvegardées dans 'scaler_values.json'")
+    # Charger et combiner les données
+    all_data = []
+    for csv_file in csv_files:
+        print(f"  Traitement de {os.path.basename(csv_file)}")
+        data = load_session(csv_file)
+        all_data.append(data)
 
-# Convertir en tensors
-features_tensor = torch.tensor(features, dtype=torch.float32)
-target_tensor = torch.tensor(target, dtype=torch.float32)
+    data = pd.concat(all_data, ignore_index=True)
+    print(f"Total de {len(data)} échantillons chargés")
 
-# Afficher des statistiques sur les données
-print("\nStatistiques des données:")
-print(f"Nombre d'échantillons: {len(features_tensor)}")
-print(f"Nombre de features: {features_tensor.shape[1]}")
-print(f"Plage des valeurs cibles:")
-print(f"  - Speed: min={target[:, 0].min():.4f}, max={target[:, 0].max():.4f}")
-print(f"  - Steering: min={target[:, 1].min():.4f}, max={target[:, 1].max():.4f}")
+    # 2. Prétraiter les données
+    print("Prétraitement des données...")
+    # Modifié pour n'utiliser que les raycasts comme entrées
+    X, y = preprocess_data(data, normalize=True, use_only_raycasts=True)
 
-# Diviser en ensembles d'entraînement et de test
-X_train, X_test, y_train, y_test = train_test_split(features_tensor, target_tensor, test_size=0.2, random_state=42)
+    # 3. Augmenter les données si demandé
+    if args.augment:
+        print("Augmentation des données...")
+        X, y = augment_data(X, y)
+        print(f"Données augmentées à {len(X)} échantillons")
 
-# Définir le modèle de régression multivariée
-class RegressionModel(nn.Module):
-    def __init__(self, input_size, output_size):
-        super(RegressionModel, self).__init__()
-        self.fc1 = nn.Linear(input_size, 64)  # Couche cachée avec 64 neurones
-        self.fc2 = nn.Linear(64, 32)          # Couche cachée avec 32 neurones
-        self.fc3 = nn.Linear(32, output_size) # Couche de sortie avec 2 neurones (pour speed et steering)
+    # 4. Diviser en ensembles d'entraînement et de validation
+    X_train, X_val, X_test, y_train, y_val, y_test = split_data(X, y, test_size=args.test_size)
+    print(f"Ensemble d'entraînement: {len(X_train)} échantillons")
+    print(f"Ensemble de validation: {len(X_val)} échantillons")
+    print(f"Ensemble de test: {len(X_test)} échantillons")
 
-    def forward(self, x):
-        x = torch.relu(self.fc1(x))  # Fonction d'activation ReLU
-        x = torch.relu(self.fc2(x))  # Fonction d'activation ReLU
-        x = self.fc3(x)              # Sortie
-        return x
+    # 5. Créer le modèle
+    print(f"Création du modèle {args.model_type}...")
+    input_size = X_train.shape[1]
+    num_rays = input_size  # Tous les inputs sont maintenant des raycasts
 
-# Définir le modèle, la fonction de perte et l'optimiseur
-input_size = X_train.shape[1]  # Nombre de features (entrées)
-output_size = y_train.shape[1] # Nombre de cibles (2: speed et steering)
+    config = load_train_config()
+    model = create_model(
+        args.model_type,
+        input_size=input_size,
+        num_rays=num_rays,
+        hidden_size=config['training']['model']['hidden_size'],
+        dropout_rate=config['training']['model'].get('dropout_rate', 0.2)
+    )
+    print(model)
 
-model = RegressionModel(input_size, output_size)
-criterion = nn.MSELoss()  # Erreur quadratique moyenne
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+    # 6. Entraîner le modèle
+    print("Démarrage de l'entraînement...")
+    model, history = train_model(
+        model,
+        X_train, y_train,
+        X_val, y_val,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        project_root=".",  # Enregistre le meilleur modèle à la racine
+        use_scheduler=True,
+        early_stopping_patience=15
+    )
 
-# Entraîner le modèle
-epochs = 100
-train_losses = []
-test_losses = []
+    # 7. Évaluer le modèle
+    print("Évaluation du modèle...")
+    evaluator = ModelEvaluator(model, X_val, y_val)
+    metrics = evaluator.calculate_metrics()
 
-for epoch in range(epochs):
-    # Entraînement
-    model.train()
-    optimizer.zero_grad()
-    outputs = model(X_train)
-    loss = criterion(outputs, y_train)
-    loss.backward()
-    optimizer.step()
-    train_losses.append(loss.item())
+    # Afficher les métriques principales
+    print("\nMétriques d'évaluation:")
+    print(f"  Direction - MAE: {metrics['steering']['mae']:.4f}, MSE: {metrics['steering']['mse']:.4f}")
+    print(f"  Accélération - MAE: {metrics['acceleration']['mae']:.4f}, MSE: {metrics['acceleration']['mse']:.4f}")
 
-    # Validation
-    model.eval()
-    with torch.no_grad():
-        test_outputs = model(X_test)
-        test_loss = criterion(test_outputs, y_test)
-        test_losses.append(test_loss.item())
+    # 8. Sauvegarder le rapport d'évaluation
+    print("Génération du rapport d'évaluation...")
+    evaluator.export_report(run_dir)
 
-    # Afficher la perte à chaque 10 epochs
-    if (epoch + 1) % 10 == 0:
-        print(f'Epoch [{epoch+1}/{epochs}], Train Loss: {loss.item():.4f}, Test Loss: {test_loss.item():.4f}')
+    # 9. Visualiser l'historique d'entraînement
+    plt.figure(figsize=(12, 4))
 
-# Sauvegarder le modèle après l'entraînement
-torch.save(model.state_dict(), 'model_checkpoint.pth')
-print("Modèle sauvegardé sous 'model_checkpoint.pth'")
+    plt.subplot(1, 2, 1)
+    plt.plot(history['train_loss'], label='Train')
+    plt.plot(history['val_loss'], label='Validation')
+    plt.title('Perte d\'entraînement')
+    plt.xlabel('Époque')
+    plt.ylabel('Perte')
+    plt.legend()
 
-# Évaluer le modèle
-model.eval()
-with torch.no_grad():
-    y_pred = model(X_test)
-    test_loss = criterion(y_pred, y_test)
-    print(f'Test Loss final: {test_loss.item():.4f}')
+    plt.subplot(1, 2, 2)
+    plt.plot(history['val_steering_mae'], label='Direction')
+    plt.plot(history['val_accel_mae'], label='Accélération')
+    plt.title('MAE de validation')
+    plt.xlabel('Époque')
+    plt.ylabel('MAE')
+    plt.legend()
 
-    # Comparer les prédictions avec les valeurs réelles
-    print("\nComparaison des prédictions:")
-    for i in range(5):
-        print(f"Échantillon {i}:")
-        print(f"  Prédit: Speed={y_pred[i,0]:.4f}, Steering={y_pred[i,1]:.4f}")
-        print(f"  Réel:   Speed={y_test[i,0]:.4f}, Steering={y_test[i,1]:.4f}")
-        print()
+    plt.tight_layout()
+    plt.savefig(os.path.join(run_dir, 'training_history.png'))
 
-# Calculer des métriques d'évaluation supplémentaires
-abs_errors = torch.abs(y_pred - y_test)
-mean_abs_error = torch.mean(abs_errors, dim=0)
-print(f"Erreur absolue moyenne: Speed={mean_abs_error[0]:.4f}, Steering={mean_abs_error[1]:.4f}")
+    print(f"\nEntraînement terminé. Tous les résultats sauvegardés dans {run_dir}")
+    print(f"Le meilleur modèle a été sauvegardé à model_checkpoint.pth")
 
-# Pour charger un modèle sauvegardé, utilise :
-# model.load_state_dict(torch.load('model_checkpoint.pth'))
-# model.eval()
+if __name__ == "__main__":
+    main()

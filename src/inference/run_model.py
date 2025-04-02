@@ -24,11 +24,12 @@ from mlagents_envs.side_channel.engine_configuration_channel import (
 
 # Fix import path issues by adding parent directory to path
 current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
+parent_dir = os.path.dirname(os.path.dirname(current_dir))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
-# Use direct import which works regardless of how the script is executed
-import utils_inference
+# Local imports
+import src.inference.utils_inference as utils_inference
 
 
 def get_project_root():
@@ -76,40 +77,128 @@ def check_unity_executable(project_root):
     return unity_env_path
 
 
-def load_model(project_root):
-    """Load the trained neural network model."""
-    model_path = os.path.join(project_root, "model_checkpoint.pth")
-    print(f"[INFO] Loading model from {model_path}")
+def load_model(model_path='model_checkpoint.pth'):
+    """
+    Load the trained neural network model.
 
+    Args:
+        model_path (str): Path to the model checkpoint file
+
+    Returns:
+        model: Loaded PyTorch model
+        input_size (int): Input size of the model
+        num_rays (int): Number of rays used in the model
+        model_type (str): Type of model architecture
+    """
     try:
-        # Define model architecture (must match training)
-        class RegressionModel(torch.nn.Module):
-            def __init__(self, input_size, output_size):
-                super(RegressionModel, self).__init__()
-                self.fc1 = torch.nn.Linear(input_size, 64)
-                self.fc2 = torch.nn.Linear(64, 32)
-                self.fc3 = torch.nn.Linear(32, output_size)
+        print(f"[INFO] Loading model from {model_path}")
+        checkpoint = torch.load(model_path, map_location=torch.device('cpu'))
 
-            def forward(self, x):
-                x = torch.relu(self.fc1(x))
-                x = torch.relu(self.fc2(x))
-                x = self.fc3(x)
-                return x
+        # Get model metadata
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            model_state = checkpoint['model_state_dict']
 
-        # Input size matches features in train.py
-        # [steering_input, acceleration_input, 10 raycasts, position_x, position_y, position_z]
-        input_size = 15  
-        output_size = 2  # [speed, steering]
+            # Extract metadata
+            input_size = checkpoint.get('input_size', None)
+            num_rays = checkpoint.get('num_rays', None)
+            model_type = checkpoint.get('model_type', None)
 
-        model = RegressionModel(input_size, output_size)
-        model.load_state_dict(torch.load(model_path))
-        model.eval()  # Set to evaluation mode
-        print(f"[INFO] Model loaded successfully")
-        return model
+            # Check if metadata is in a nested dictionary
+            if input_size is None and 'metadata' in checkpoint:
+                metadata = checkpoint['metadata']
+                input_size = metadata.get('input_size', None)
+                num_rays = metadata.get('num_rays', None)
+                model_type = metadata.get('model_type', None)
+        else:
+            # Old format where state_dict is directly stored
+            model_state = checkpoint
+            input_size = None
+            num_rays = None
+            model_type = None
+
+        # Print available metadata
+        print("[INFO] Checkpoint contains metadata:")
+        if input_size:
+            print(f"[INFO] Input size: {input_size}")
+        if num_rays:
+            print(f"[INFO] Number of rays: {num_rays}")
+        if model_type:
+            print(f"[INFO] Model type: {model_type}")
+
+        # Detect model type from keys if not explicitly provided
+        if model_type is None:
+            # Look at the keys in the state dict to determine model type
+            keys = list(model_state.keys())
+            if any('raycast_branch' in key for key in keys):
+                model_type = 'multi'
+                print(f"[INFO] Detected model type from weights: {model_type}")
+            elif any('lstm' in key for key in keys):
+                model_type = 'lstm'
+                print(f"[INFO] Detected model type from weights: {model_type}")
+            elif any('cnn' in key for key in keys):
+                if any('fc' in key for key in keys):
+                    model_type = 'hybrid'
+                else:
+                    model_type = 'cnn'
+                print(f"[INFO] Detected model type from weights: {model_type}")
+            else:
+                model_type = 'simple'
+                print(f"[INFO] Detected model type from weights: {model_type}")
+
+        # Normalize model type name
+        if model_type:
+            # Convert to lowercase and handle variations
+            model_type = model_type.lower()
+            if model_type == 'multiinput' or model_type == 'multiinputmodel':
+                model_type = 'multi'
+                print(f"[INFO] Normalized model type from '{model_type}' to 'multi'")
+            elif model_type == 'simplemodel':
+                model_type = 'simple'
+            elif model_type == 'cnnmodel':
+                model_type = 'cnn'
+            elif model_type == 'lstmmodel':
+                model_type = 'lstm'
+            elif model_type == 'hybridmodel':
+                model_type = 'hybrid'
+
+        # Check if the model was trained with only raycasts
+        has_other_branch = any('other_branch' in k for k in model_state.keys())
+        uses_only_raycasts = not has_other_branch
+
+        if uses_only_raycasts:
+            print("[INFO] Model was trained using only raycasts (no speed data)")
+
+        # Create the appropriate model
+        from src.model.model_builder import create_model
+
+        # Default to 10 rays if not specified
+        if num_rays is None:
+            if input_size:
+                num_rays = input_size if uses_only_raycasts else input_size - 1
+            else:
+                num_rays = 10
+                input_size = 10 if uses_only_raycasts else 11
+
+        print(f"[INFO] Creating model with input_size={input_size}, num_rays={num_rays}")
+
+        # Create model based on detected or provided type
+        model = create_model(
+            model_type=model_type,
+            input_size=input_size,
+            num_rays=num_rays
+        )
+
+        # Load the weights
+        model.load_state_dict(model_state, strict=False)
+        model.eval()  # Set model to evaluation mode
+
+        return model, input_size, num_rays, model_type
+
     except Exception as e:
         print(f"[ERROR] Failed to load model: {e}")
+        import traceback
         traceback.print_exc()
-        sys.exit(1)
+        return None, None, None, None
 
 
 def setup_unity_environment(unity_env_path, engine_config, project_root):
@@ -120,31 +209,25 @@ def setup_unity_environment(unity_env_path, engine_config, project_root):
     print(f"[INFO] Agent configuration: {agent_config_path}")
 
     print("[INFO] Launching and connecting to Unity environment...")
-    try:
-        env = UnityEnvironment(
-            file_name=unity_env_path,
-            side_channels=[engine_config],
-            base_port=5004,
-            additional_args=[
-                "--config-path", f"{agent_config_path}",
-                "-logFile", "unity.log"
-            ]
-        )
+    env = UnityEnvironment(
+        file_name=unity_env_path,
+        side_channels=[engine_config],
+        base_port=5004,
+        additional_args=[
+            "--config-path", f"{agent_config_path}",
+            "-logFile", "unity_inference.log"
+        ]
+    )
 
-        print("[INFO] Resetting Unity environment")
-        env.reset()
-        print("[INFO] Unity environment successfully initialized!")
+    print("[INFO] Resetting Unity environment")
+    env.reset()
+    print("[INFO] Unity environment successfully initialized!")
 
-        return env
-    except Exception as e:
-        print(f"[ERROR] Failed to initialize Unity environment: {e}")
-        traceback.print_exc()
-        sys.exit(1)
+    return env
 
 
 def get_num_rays_from_config(project_root):
     """Get number of rays from agent configuration."""
-    num_rays = 10  # Default value
     agent_config_path = os.path.join(
         project_root, "config", "agent_config.json"
     )
@@ -154,117 +237,182 @@ def get_num_rays_from_config(project_root):
             if "agents" in agent_config and len(agent_config["agents"]) > 0:
                 num_rays = agent_config["agents"][0].get("nbRay", 10)
                 print(f"[INFO] Number of rays from config: {num_rays}")
+                return num_rays
     except Exception as e:
         print(f"[WARNING] Could not load ray count from config: {e}")
-        print(f"[WARNING] Using default ray count: {num_rays}")
 
-    return num_rays
+    # Default if we can't get from config
+    print(f"[WARNING] Using default ray count: 10")
+    return 10
 
 
-def run_inference_loop(env, model, num_rays):
-    """Run the main inference loop."""
-    behavior_name = list(env.behavior_specs.keys())[0]
-    print(f"[INFO] Detected behavior: {behavior_name}")
+def process_observations(obs_array, num_rays, use_only_raycasts=False):
+    """Extract and process observations from observation array."""
+    # Extract raycasts (first part of the array)
+    raycasts = obs_array[:num_rays]
+
+    # Normalize raycasts to [0, 1] range
+    max_raycast_value = 260.0  # Max value used in training
+    raycasts_normalized = np.clip(raycasts / max_raycast_value, 0, 1)
+
+    # Print raycast statistics
+    print(f"Raycast min/max/mean: {np.min(raycasts):.4f}/{np.max(raycasts):.4f}/{np.mean(raycasts):.4f}")
+    print(f"First 5 raycast values: {raycasts[:5]}")
+
+    # Extract other observations
+    try:
+        speed = float(obs_array[-5]) if len(obs_array) >= 5 else 0.0
+        steering = float(obs_array[-4]) if len(obs_array) >= 4 else 0.0
+        position_x = float(obs_array[-3]) if len(obs_array) >= 3 else 0.0
+        position_y = float(obs_array[-2]) if len(obs_array) >= 2 else 0.0
+        position_z = float(obs_array[-1]) if len(obs_array) >= 1 else 0.0
+    except IndexError:
+        speed, steering = 0.0, 0.0
+        position_x, position_y, position_z = 0.0, 0.0, 0.0
+
+    # Create feature array for model input (same format as training)
+    if use_only_raycasts:
+        features = raycasts_normalized
+    else:
+        # Normalize speed like in training
+        speed_normalized = min(max(speed / 30.0, 0.0), 1.0)  # Assuming max speed is 30
+        features = np.concatenate([raycasts_normalized, [speed_normalized]])
+
+    return features, speed, steering, position_x, position_y, position_z
+
+
+def run_inference_loop(env, model, model_type, input_size, num_rays, behavior_name,
+                       max_speed=1.0, smooth_factor=0.3, debug=False):
+    """
+    Main inference loop for autonomous driving.
+    """
+    print("[INFO] Starting inference loop...")
+    print(f"[INFO] Using model type: {model_type}")
+
+    # Check if the model was trained with only raycasts
+    uses_only_raycasts = input_size == num_rays
+    print(f"[INFO] Model uses only raycasts (no speed): {uses_only_raycasts}")
+
+    # Initialize variables
+    done = False
+    prev_steering = 0.0
+    steering_history = []
 
     try:
-        print("[INFO] Starting autonomous driving")
-        frame_count = 0
-        
-        # Initialize exponential moving average for smoother control
-        steering_ema = 0.0
-        accel_ema = 0.3  # Start with moderate acceleration
-        
-        while True:
-            # Get observations
+        while not done:
             decision_steps, terminal_steps = env.get_steps(behavior_name)
-            
-            # Skip if no agents
-            if len(decision_steps) == 0:
-                env.step()
-                continue
-                
-            # Process for each agent (usually just one)
-            for agent_id in decision_steps:
-                # Extract observations
-                obs_array = decision_steps[agent_id].obs[0]
-                
-                # Prepare inputs for the model
-                input_data = utils_inference.preprocess_observation(obs_array, num_rays)
-                
-                # Generate predictions
-                with torch.no_grad():
-                    output = model(input_data)
-                
-                # Convert model output to actions
-                raw_steering, raw_accel = utils_inference.postprocess_action(output)
-                
-                # Apply exponential moving average for smoother control
-                alpha = 0.2  # Smoothing factor
-                steering_ema = alpha * raw_steering + (1 - alpha) * steering_ema
-                accel_ema = alpha * raw_accel + (1 - alpha) * accel_ema
-                
-                # Display info periodically
-                frame_count += 1
-                if frame_count % 30 == 0:
-                    print(f"[INFO] Frame {frame_count}")
-                    print(f"  Steering: raw={raw_steering:.2f}, smoothed={steering_ema:.2f}")
-                    print(f"  Accel: raw={raw_accel:.2f}, smoothed={accel_ema:.2f}")
-                
-                # Send actions to simulation
-                continuous_actions = np.array([[accel_ema, steering_ema]], dtype=np.float32)
-                action_tuple = ActionTuple(continuous=continuous_actions)
-                env.set_actions(behavior_name, action_tuple)
-            
+            obs_array = decision_steps.obs[0][0]
+            features, speed, obs_steering, pos_x, pos_y, pos_z = process_observations(
+                obs_array, num_rays, uses_only_raycasts
+            )
+
+            # Convert features to tensor for model
+            features_tensor = torch.FloatTensor(features).unsqueeze(0)  # Add batch dimension
+
+            # Different forward pass handling based on model type
+            if model_type and (model_type.lower() == 'hybrid' or model_type.lower() == 'lstm'):
+                # Handle models that return a tuple (output, hidden)
+                predictions, _ = model(features_tensor)
+            else:
+                # Standard forward pass
+                predictions = model(features_tensor)
+
+            # Extract predictions
+            if len(predictions.shape) > 1 and predictions.shape[1] > 1:
+                steering_pred = predictions[0, 0].item()
+                accel_pred = predictions[0, 1].item()
+            else:
+                steering_pred = predictions.item()
+                accel_pred = 0.7  # Default acceleration
+
+            # Apply smoothing to reduce oscillations
+            steering_history.append(steering_pred)
+            if len(steering_history) > 3:
+                steering_history.pop(0)
+
+            smoothed_steering = sum(steering_history) / len(steering_history)
+
+            # Calculate appropriate acceleration
+            acceleration = accel_pred
+
+            # Create and send actions to the environment
+            continuous_actions = np.array([[acceleration, smoothed_steering]], dtype=np.float32)
+            action_tuple = ActionTuple(continuous=continuous_actions)
+            env.set_actions(behavior_name, action_tuple)
+
+            # Step the environment
             env.step()
-    
-    except KeyboardInterrupt:
-        print("[INFO] Inference interrupted by user")
+
+            # Display information periodically
+            print("\n[INFO] Inference state:")
+            print(f"  Speed: {speed:.2f}")
+            print(f"  Position: ({pos_x:.2f}, {pos_y:.2f}, {pos_z:.2f})")
+            print(f"  Steering prediction: {steering_pred:.4f} (smoothed: {smoothed_steering:.4f})")
+            print(f"  Acceleration: {acceleration:.4f}")
+
     except Exception as e:
-        print(f"[ERROR] Error during inference: {e}")
+        print(f"[ERROR] Exception during inference: {e}")
         traceback.print_exc()
+    finally:
+        env.close()
+        print("[INFO] Inference completed")
 
 
 def main():
     """Main function for autonomous driving inference."""
+    print("[INFO] Starting autonomous driving inference")
+
+    project_root = get_project_root()
+    raycast_config = load_config(project_root)
+    unity_env_path = check_unity_executable(project_root)
+
+    # Configure Unity communication channel
+    print("[INFO] Configuring communication channel with Unity")
+    engine_config = EngineConfigurationChannel()
+    engine_config.set_configuration_parameters(
+        width=raycast_config["graphic_settings"]["width"],
+        height=raycast_config["graphic_settings"]["height"],
+        quality_level=raycast_config["graphic_settings"]["quality_level"],
+        time_scale=raycast_config["time_scale"]
+    )
+
     try:
-        # Setup
-        project_root = get_project_root()
-        raycast_config = load_config(project_root)
-        unity_env_path = check_unity_executable(project_root)
-        num_rays = get_num_rays_from_config(project_root)
-        
-        # Initialize normalization
-        utils_inference.load_scaler_values()
-        
-        # Load model
-        model = load_model(project_root)
-        
-        # Configure communication with Unity
-        print("[INFO] Configuring communication channel with Unity")
-        engine_config = EngineConfigurationChannel()
-        engine_config.set_configuration_parameters(
-            width=raycast_config["graphic_settings"]["width"],
-            height=raycast_config["graphic_settings"]["height"],
-            quality_level=raycast_config["graphic_settings"]["quality_level"],
-            time_scale=raycast_config["time_scale"]
-        )
-        
-        # Initialize environment
+        # Load the trained model
+        model, input_size, num_rays, model_type = load_model(os.path.join(project_root, "model_checkpoint.pth"))
+
+        if model is None:
+            print("[ERROR] Failed to load model. Exiting.")
+            return
+
+        # Setup Unity environment
         env = setup_unity_environment(unity_env_path, engine_config, project_root)
-        
+
         try:
-            # Run main inference loop
-            run_inference_loop(env, model, num_rays)
+            # Get number of rays
+            num_rays = get_num_rays_from_config(project_root)
+
+            # Get behavior name
+            behavior_name = list(env.behavior_specs.keys())[0]
+
+            # Run the inference loop
+            run_inference_loop(
+                env,
+                model,
+                model_type,
+                input_size,
+                num_rays,
+                behavior_name
+            )
+
         finally:
-            # Clean up
             print("[INFO] Closing Unity environment")
             env.close()
-    
+
     except Exception as e:
-        print(f"[ERROR] Unhandled exception: {e}")
+        print(f"[ERROR] Exception during setup: {e}")
         traceback.print_exc()
-    finally:
-        print("[INFO] Program terminated")
+
+    print("[INFO] Inference completed")
 
 
 if __name__ == "__main__":
