@@ -77,79 +77,112 @@ def check_unity_executable(project_root):
     return unity_env_path
 
 
-def load_model(project_root):
-    """Load the trained neural network model."""
-    model_path = os.path.join(project_root, "model_checkpoint.pth")
-    print(f"[INFO] Loading model from {model_path}")
-
+def load_model(model_path='model_checkpoint.pth'):
+    """
+    Load the trained neural network model.
+    
+    Args:
+        model_path (str): Path to the model checkpoint file
+        
+    Returns:
+        model: Loaded PyTorch model
+        input_size (int): Input size of the model
+        num_rays (int): Number of rays used in the model
+        model_type (str): Type of model architecture
+    """
     try:
-        # Load the model state and metadata
+        print(f"[INFO] Loading model from {model_path}")
         checkpoint = torch.load(model_path, map_location=torch.device('cpu'))
         
-        # Determine if it's a new format with metadata or old format
-        if isinstance(checkpoint, dict):
-            if 'model_state_dict' in checkpoint:
-                # New format with metadata
-                model_state = checkpoint['model_state_dict']
-                
-                # Get metadata if available
-                input_size = checkpoint.get('input_size', None)
-                num_rays = checkpoint.get('num_rays', None)
-                
-                print(f"[INFO] Checkpoint contains metadata:")
-                print(f"[INFO] Input size: {input_size}")
-                print(f"[INFO] Number of rays: {num_rays}")
-                
-                # Try to determine the model type
-                model_type = checkpoint.get('model_type', 'hybrid')  # Default to hybrid if not specified
-                
-                # Import model builder dynamically
-                sys.path.append(os.path.join(project_root, "src", "model"))
-                from model_builder import create_model
-                
-                # Create the appropriate model type
-                model = create_model(model_type, input_size=input_size, num_rays=num_rays)
-                
-                # Load the model state dictionary
-                model.load_state_dict(model_state)
-                print(f"[INFO] Loaded {model_type} model successfully with metadata")
-                return model, model_type
-            else:
-                # It might be a direct state dict
-                print("[INFO] Attempting to load as direct state dict")
-                # Try to determine model type from keys
-                if any("conv" in key for key in checkpoint.keys()):
-                    model_type = "cnn"
-                elif any("lstm" in key for key in checkpoint.keys()):
-                    model_type = "lstm"
-                else:
-                    model_type = "simple"
-                
-                # Get number of rays from config
-                config_path = os.path.join(project_root, "config", "agent_config.json")
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-                    num_rays = config["agents"][0]["nbRay"]
-                
-                print(f"[INFO] Determined model type: {model_type}")
-                print(f"[INFO] Number of rays from config: {num_rays}")
-                
-                # Create model
-                input_size = num_rays + 1  # rays + speed
-                model = create_model(model_type, input_size=input_size, num_rays=num_rays)
-                
-                # Load the direct state dict
-                model.load_state_dict(checkpoint)
-                return model, model_type
+        # Get model metadata
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            model_state = checkpoint['model_state_dict']
+            
+            # Extract metadata
+            input_size = checkpoint.get('input_size', None)
+            num_rays = checkpoint.get('num_rays', None)
+            model_type = checkpoint.get('model_type', None)
+            
+            # Check if metadata is in a nested dictionary
+            if input_size is None and 'metadata' in checkpoint:
+                metadata = checkpoint['metadata']
+                input_size = metadata.get('input_size', None)
+                num_rays = metadata.get('num_rays', None)
+                model_type = metadata.get('model_type', None)
         else:
-            # Old direct model format - not supported
-            print("[ERROR] Unsupported model format. Please retrain your model.")
-            return None, None
-    
+            # Old format where state_dict is directly stored
+            model_state = checkpoint
+            input_size = None
+            num_rays = None
+            model_type = None
+            
+        # Print available metadata
+        print("[INFO] Checkpoint contains metadata:")
+        if input_size:
+            print(f"[INFO] Input size: {input_size}")
+        if num_rays:
+            print(f"[INFO] Number of rays: {num_rays}")
+        if model_type:
+            print(f"[INFO] Model type: {model_type}")
+            
+        # Detect model type from keys if not explicitly provided
+        if model_type is None:
+            # Look at the keys in the state dict to determine model type
+            keys = list(model_state.keys())
+            if any('raycast_branch' in key for key in keys):
+                model_type = 'multi'
+                print(f"[INFO] Detected model type from weights: {model_type}")
+            elif any('lstm' in key for key in keys):
+                model_type = 'lstm'
+                print(f"[INFO] Detected model type from weights: {model_type}")
+            elif any('cnn' in key for key in keys):
+                if any('fc' in key for key in keys):
+                    model_type = 'hybrid'
+                else:
+                    model_type = 'cnn'
+                print(f"[INFO] Detected model type from weights: {model_type}")
+            else:
+                model_type = 'simple'
+                print(f"[INFO] Detected model type from weights: {model_type}")
+                
+        # Check if the model was trained with only raycasts
+        has_other_branch = any('other_branch' in k for k in model_state.keys())
+        uses_only_raycasts = not has_other_branch
+        
+        if uses_only_raycasts:
+            print("[INFO] Model was trained using only raycasts (no speed data)")
+            
+        # Create the appropriate model
+        from src.model.model_builder import create_model
+        
+        # Default to 10 rays if not specified
+        if num_rays is None:
+            if input_size:
+                num_rays = input_size if uses_only_raycasts else input_size - 1
+            else:
+                num_rays = 10
+                input_size = 10 if uses_only_raycasts else 11
+                
+        print(f"[INFO] Creating model with input_size={input_size}, num_rays={num_rays}")
+                
+        # Create model based on detected or provided type
+        model = create_model(
+            model_type=model_type,
+            input_size=input_size,
+            num_rays=num_rays
+        )
+        
+        # Load the weights
+        model.load_state_dict(model_state, strict=False)
+        model.eval()  # Set model to evaluation mode
+        
+        return model, input_size, num_rays, model_type
+        
     except Exception as e:
         print(f"[ERROR] Failed to load model: {e}")
+        import traceback
         traceback.print_exc()
-        return None, None
+        return None, None, None, None
 
 
 def setup_unity_environment(unity_env_path, engine_config, project_root):
@@ -197,7 +230,7 @@ def get_num_rays_from_config(project_root):
     return 10
 
 
-def process_observations(obs_array, num_rays):
+def process_observations(obs_array, num_rays, use_only_raycasts=False):
     """Extract and process observations from observation array."""
     # Extract raycasts (first part of the array)
     raycasts = obs_array[:num_rays]
@@ -217,130 +250,92 @@ def process_observations(obs_array, num_rays):
         speed, steering = 0.0, 0.0
         position_x, position_y, position_z = 0.0, 0.0, 0.0
     
-    # Normalize speed like in training
-    speed_normalized = min(max(speed / 30.0, 0.0), 1.0)  # Assuming max speed is 30
-    
     # Create feature array for model input (same format as training)
-    features = np.concatenate([raycasts_normalized, [speed_normalized]])
+    if use_only_raycasts:
+        features = raycasts_normalized
+    else:
+        # Normalize speed like in training
+        speed_normalized = min(max(speed / 30.0, 0.0), 1.0)  # Assuming max speed is 30
+        features = np.concatenate([raycasts_normalized, [speed_normalized]])
     
     return features, speed, steering, position_x, position_y, position_z
 
 
-def run_inference_loop(env, model, num_rays, model_type='simple'):
-    """Run the main inference loop."""
-    # Get behavior name
-    behavior_name = list(env.behavior_specs.keys())[0]
-    print(f"[INFO] Detected behavior: {behavior_name}")
-    
-    # Get initial observations
-    decision_steps, terminal_steps = env.get_steps(behavior_name)
+def run_inference_loop(env, model, model_type, input_size, num_rays, behavior_name, 
+                       max_speed=1.0, smooth_factor=0.3, debug=False):
+    """
+    Main inference loop for autonomous driving.
+    """
     print("[INFO] Starting inference loop...")
-    
-    # Smoothing parameters for steering
-    steering_history = []
-    max_history = 3  # Number of previous steering values to consider
-    
-    # For hybrid model, keep a history of observations
-    observation_history = []
-    seq_length = 10  # Default sequence length for hybrid model
-    hidden_state = None
-    
-    # Print model type being used
     print(f"[INFO] Using model type: {model_type}")
     
-    # Create acceleration controller
-    if hasattr(utils_inference, 'AccelerationController'):
-        accel_controller = utils_inference.AccelerationController(max_speed=1.0)
+    # Check if the model was trained with only raycasts
+    uses_only_raycasts = input_size == num_rays
+    print(f"[INFO] Model uses only raycasts (no speed): {uses_only_raycasts}")
     
-    frame_count = 0
+    # Initialize variables
+    done = False
+    prev_steering = 0.0
+    steering_history = []
+    
     try:
-        while True:
-            # Process observations
+        while not done:
+            decision_steps, terminal_steps = env.get_steps(behavior_name)
             obs_array = decision_steps.obs[0][0]
-            features, speed, obs_steering, pos_x, pos_y, pos_z = process_observations(obs_array, num_rays)
-            
-            # Add to observation history for sequence-based models
-            if model_type.lower() == 'hybrid' or model_type.lower() == 'lstm':
-                observation_history.append(features)
-                if len(observation_history) > seq_length:
-                    observation_history.pop(0)
+            features, speed, obs_steering, pos_x, pos_y, pos_z = process_observations(
+                obs_array, num_rays, uses_only_raycasts
+            )
             
             # Convert features to tensor for model
-            if model_type.lower() == 'hybrid' or model_type.lower() == 'lstm':
-                # If we don't have enough history yet, duplicate the current observation
-                while len(observation_history) < seq_length:
-                    observation_history.append(features)
-                
-                # First convert to numpy array, then to tensor (more efficient)
-                features_array = np.array(observation_history)
-                features_tensor = torch.FloatTensor(features_array).unsqueeze(0)
-            else:
-                features_tensor = torch.FloatTensor(features).unsqueeze(0)  # Add batch dimension
+            features_tensor = torch.FloatTensor(features).unsqueeze(0)  # Add batch dimension
             
-            # Get model prediction
-            with torch.no_grad():
-                if model_type.lower() == 'hybrid':
-                    prediction, hidden_state = model(features_tensor, hidden_state)
-                    steering_pred = prediction[0, 0].item()  # First output is steering
-                    accel_pred = prediction[0, 1].item()     # Second output is acceleration
-                else:
-                    prediction = model(features_tensor)
-                    # Handle different output formats
-                    if len(prediction.shape) > 1 and prediction.shape[1] > 1:
-                        # Model outputs both steering and acceleration
-                        steering_pred = prediction[0, 0].item()
-                        accel_pred = prediction[0, 1].item()
-                    else:
-                        # Model outputs only steering
-                        steering_pred = prediction.item()
-                        accel_pred = 0.7  # Default acceleration
+            # Different forward pass handling based on model type
+            if model_type and (model_type.lower() == 'hybrid' or model_type.lower() == 'lstm'):
+                # Handle models that return a tuple (output, hidden)
+                predictions, _ = model(features_tensor)
+            else:
+                # Standard forward pass
+                predictions = model(features_tensor)
+                
+            # Extract predictions
+            if len(predictions.shape) > 1 and predictions.shape[1] > 1:
+                steering_pred = predictions[0, 0].item()
+                accel_pred = predictions[0, 1].item()
+            else:
+                steering_pred = predictions.item()
+                accel_pred = 0.7  # Default acceleration
             
             # Apply smoothing to reduce oscillations
             steering_history.append(steering_pred)
-            if len(steering_history) > max_history:
+            if len(steering_history) > 3:
                 steering_history.pop(0)
             
             smoothed_steering = sum(steering_history) / len(steering_history)
             
             # Calculate appropriate acceleration
-            if hasattr(utils_inference, 'AccelerationController'):
-                acceleration = accel_controller.compute_acceleration(
-                    accel_pred, 
-                    obs_array[:num_rays],
-                    smoothed_steering
-                )
-            else:
-                acceleration = 0.7  # Moderate acceleration if no controller
+            acceleration = accel_pred
             
             # Create and send actions to the environment
             continuous_actions = np.array([[acceleration, smoothed_steering]], dtype=np.float32)
             action_tuple = ActionTuple(continuous=continuous_actions)
             env.set_actions(behavior_name, action_tuple)
             
-            # Display information periodically
-            frame_count += 1
-            if frame_count % 10 == 0:
-                print("\n[INFO] Inference state:")
-                print(f"  Speed: {speed:.2f}")
-                print(f"  Position: ({pos_x:.2f}, {pos_y:.2f}, {pos_z:.2f})")
-                print(f"  Steering prediction: {steering_pred:.4f} (smoothed: {smoothed_steering:.4f})")
-                print(f"  Acceleration: {acceleration:.4f}")
-                # Show min/max raycast values
-                min_ray = min(obs_array[:num_rays])
-                max_ray = max(obs_array[:num_rays])
-                print(f"  Raycasts range: {min_ray:.2f} to {max_ray:.2f}")
-            
             # Step the environment
             env.step()
             
-            # Get next observations
-            decision_steps, terminal_steps = env.get_steps(behavior_name)
+            # Display information periodically
+            print("\n[INFO] Inference state:")
+            print(f"  Speed: {speed:.2f}")
+            print(f"  Position: ({pos_x:.2f}, {pos_y:.2f}, {pos_z:.2f})")
+            print(f"  Steering prediction: {steering_pred:.4f} (smoothed: {smoothed_steering:.4f})")
+            print(f"  Acceleration: {acceleration:.4f}")
             
-    except KeyboardInterrupt:
-        print("[INFO] Inference interrupted by user")
     except Exception as e:
         print(f"[ERROR] Exception during inference: {e}")
         traceback.print_exc()
+    finally:
+        env.close()
+        print("[INFO] Inference completed")
 
 
 def main():
@@ -363,7 +358,11 @@ def main():
     
     try:
         # Load the trained model
-        model, model_type = load_model(project_root)
+        model, input_size, num_rays, model_type = load_model(os.path.join(project_root, "model_checkpoint.pth"))
+        
+        if model is None:
+            print("[ERROR] Failed to load model. Exiting.")
+            return
         
         # Setup Unity environment
         env = setup_unity_environment(unity_env_path, engine_config, project_root)
@@ -372,8 +371,18 @@ def main():
             # Get number of rays
             num_rays = get_num_rays_from_config(project_root)
             
+            # Get behavior name
+            behavior_name = list(env.behavior_specs.keys())[0]
+            
             # Run the inference loop
-            run_inference_loop(env, model, num_rays, model_type)
+            run_inference_loop(
+                env, 
+                model, 
+                model_type,
+                input_size, 
+                num_rays, 
+                behavior_name
+            )
             
         finally:
             print("[INFO] Closing Unity environment")
