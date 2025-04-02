@@ -102,44 +102,81 @@ class LSTMModel(nn.Module):
 
 class MultiInputModel(nn.Module):
     """
-    Model with separate branches for different input types.
-    Allows for specialized processing of raycasts and other features.
+    Modèle à entrées multiples qui traite les raycasts avec CNN.
+    Adapté pour fonctionner avec ou sans données d'état du véhicule.
     """
-    def __init__(self, raycast_size, other_feature_size):
+    def __init__(self, input_size, num_rays=None, hidden_size=64, dropout_rate=0.2):
         super(MultiInputModel, self).__init__()
-        # Raycast processing branch
+        
+        # Si num_rays n'est pas fourni, supposer que tout est raycast
+        if num_rays is None:
+            num_rays = input_size
+            
+        # Nombre de caractéristiques qui ne sont pas des raycasts
+        other_features = input_size - num_rays
+        
+        # Branche CNN pour les raycasts
         self.raycast_branch = nn.Sequential(
-            nn.Linear(raycast_size, 64),
+            nn.Conv1d(1, 16, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.Linear(64, 32),
-            nn.ReLU()
+            nn.MaxPool1d(kernel_size=2, stride=1, padding=0),
+            nn.Conv1d(16, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Flatten()
         )
         
-        # Other features branch (like speed)
-        self.feature_branch = nn.Sequential(
-            nn.Linear(other_feature_size, 8),
-            nn.ReLU()
-        )
+        # Calculer la taille de sortie après convolution et flatten
+        # Cette formule suppose des kernel 3, padding 1, et un maxpool
+        cnn_output_size = 32 * (num_rays - 1)
         
-        # Combined processing
-        self.combined = nn.Sequential(
-            nn.Linear(32 + 8, 32),
+        # Branche pour les autres caractéristiques si elles existent
+        if other_features > 0:
+            self.has_other_features = True
+            self.other_branch = nn.Sequential(
+                nn.Linear(other_features, hidden_size // 2),
+                nn.ReLU(),
+                nn.Dropout(dropout_rate)
+            )
+            # Taille combinée des sorties des deux branches
+            combined_size = cnn_output_size + (hidden_size // 2)
+        else:
+            self.has_other_features = False
+            combined_size = cnn_output_size
+        
+        # Couches communes après concaténation
+        self.common_layers = nn.Sequential(
+            nn.Linear(combined_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(32, 1)
+            nn.Dropout(dropout_rate),
+            nn.Linear(hidden_size, hidden_size // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout_rate),
+            nn.Linear(hidden_size // 2, 2)  # 2 sorties: direction et accélération
         )
     
     def forward(self, x):
-        # Split input
-        raycasts = x[:, :-1]  # All but the last feature (assuming speed is last)
-        other_features = x[:, -1].unsqueeze(1)  # Just the speed feature
+        # Diviser l'entrée en raycasts et autres caractéristiques
+        if self.has_other_features:
+            num_rays = x.shape[1] - 1
+            raycasts = x[:, :num_rays]
+            other = x[:, num_rays:]
+        else:
+            raycasts = x
         
-        # Process through branches
+        # Traiter les raycasts avec CNN (ajouter dimension du canal)
+        raycasts = raycasts.unsqueeze(1)  # [batch, 1, num_rays]
         raycast_features = self.raycast_branch(raycasts)
-        other_features = self.feature_branch(other_features)
         
-        # Combine and process
-        combined = torch.cat([raycast_features, other_features], dim=1)
-        output = self.combined(combined)
+        # Traiter les autres caractéristiques si présentes
+        if self.has_other_features:
+            other_features = self.other_branch(other)
+            # Concaténer les caractéristiques
+            combined = torch.cat((raycast_features, other_features), dim=1)
+        else:
+            combined = raycast_features
+        
+        # Passer par les couches communes
+        output = self.common_layers(combined)
         
         return output
 
@@ -227,35 +264,35 @@ class HybridModel(nn.Module):
         return output, hidden
 
 
-def create_model(model_type, input_size, num_rays=None, **kwargs):
+def create_model(model_type, input_size, num_rays=None, hidden_size=64, dropout_rate=0.2):
     """
-    Factory function to create models based on type.
+    Crée un modèle selon le type spécifié.
     
     Args:
-        model_type (str): Type of model to create
-        input_size (int): Size of input features
-        num_rays (int): Number of raycasts (required for some models)
+        model_type (str): Type de modèle ('simple', 'cnn', 'lstm', 'hybrid', 'multi')
+        input_size (int): Taille de l'entrée
+        num_rays (int): Nombre de raycasts (utile pour les modèles CNN)
+        hidden_size (int): Taille des couches cachées
+        dropout_rate (float): Taux de dropout
         
     Returns:
-        nn.Module: Instantiated model
+        nn.Module: Modèle PyTorch
     """
     if model_type == 'simple':
-        return SimpleModel(input_size)
+        return SimpleModel(input_size, hidden_size)
     elif model_type == 'cnn':
         if num_rays is None:
-            raise ValueError("num_rays must be specified for CNN model")
+            num_rays = input_size
         return CNNModel(input_size, num_rays)
     elif model_type == 'lstm':
-        # Note: For LSTM, preprocess data as sequences
-        return LSTMModel(input_size)
+        return LSTMModel(input_size, hidden_size)
+    elif model_type == 'hybrid':
+        if num_rays is None:
+            num_rays = input_size
+        return HybridModel(input_size, num_rays)
     elif model_type == 'multi':
-        # For multi-input, assume the last feature is speed
-        raycast_size = input_size - 1  # Raycasts + other features except speed
-        other_feature_size = 1  # Just speed
-        return MultiInputModel(raycast_size, other_feature_size)
-    elif model_type == "hybrid":
-        num_rays = kwargs.get("num_rays", input_size - 1)  # Par défaut, tous sauf vitesse
-        seq_length = kwargs.get("seq_length", 10)
-        return HybridModel(input_size, num_rays, seq_length)
+        if num_rays is None:
+            num_rays = input_size
+        return MultiInputModel(input_size, num_rays, hidden_size, dropout_rate)
     else:
-        raise ValueError(f"Unknown model type: {model_type}")
+        raise ValueError(f"Type de modèle inconnu: {model_type}")

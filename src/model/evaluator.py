@@ -36,6 +36,17 @@ class ModelEvaluator:
             self.predictions = outputs.cpu().numpy()
         return self.predictions
     
+    def calculate_correlation(self, y_true, y_pred):
+        """
+        Calculate correlation between true and predicted values.
+        Handle cases where there's no variation in the data.
+        """
+        # Check for zero standard deviation which causes the warnings
+        if np.std(y_true) == 0 or np.std(y_pred) == 0:
+            return 0.0  # No correlation if there's no variation
+        
+        return np.corrcoef(y_true, y_pred)[0, 1]
+    
     def calculate_metrics(self):
         """Calcule les métriques d'évaluation"""
         if self.predictions is None:
@@ -52,7 +63,7 @@ class ModelEvaluator:
             'mse': mean_squared_error(y_steering, pred_steering),
             'mae': mean_absolute_error(y_steering, pred_steering),
             'max_error': np.max(np.abs(y_steering - pred_steering)),
-            'correlation': np.corrcoef(y_steering, pred_steering)[0, 1]
+            'correlation': self.calculate_correlation(y_steering, pred_steering)
         }
         
         # Métriques pour l'accélération
@@ -60,7 +71,7 @@ class ModelEvaluator:
             'mse': mean_squared_error(y_accel, pred_accel),
             'mae': mean_absolute_error(y_accel, pred_accel),
             'max_error': np.max(np.abs(y_accel - pred_accel)),
-            'correlation': np.corrcoef(y_accel, pred_accel)[0, 1]
+            'correlation': self.calculate_correlation(y_accel, pred_accel)
         }
         
         return {
@@ -118,9 +129,8 @@ class ModelEvaluator:
         
     def export_report(self, output_dir):
         """
-        Exporte un rapport complet d'évaluation
+        Export a complete evaluation report with metrics and visualizations.
         """
-        # Créer le répertoire si nécessaire
         os.makedirs(output_dir, exist_ok=True)
         
         # Calculer les métriques

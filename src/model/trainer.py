@@ -125,7 +125,7 @@ def train_model(model, X_train, y_train, X_val, y_val, epochs=100, batch_size=32
             # Calculer la perte
             loss_steering = criterion_steering(outputs[:, 0], targets[:, 0])
             loss_accel = criterion_accel(outputs[:, 1], targets[:, 1])
-            loss = loss_steering + 0.5 * loss_accel  # Pondération de l'importance
+            loss = 0.7 * loss_steering + 1.3 * loss_accel  # Donner plus d'importance à l'accélération
             
             # Backward pass et optimisation
             optimizer.zero_grad()

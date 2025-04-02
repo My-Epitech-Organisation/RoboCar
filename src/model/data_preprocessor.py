@@ -14,6 +14,7 @@ import glob
 import pandas as pd
 import numpy as np
 import random
+import json
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 
@@ -245,31 +246,45 @@ def split_data(X, y, test_size=0.2, val_size=0.2, random_state=42):
     return X_train, X_val, X_test, y_train, y_val, y_test
 
 
-def preprocess_data(data, normalize=True, augment=True):
+def preprocess_data(data, normalize=True, use_only_raycasts=False):
     """
-    Full preprocessing pipeline.
+    Prétraite les données de conduite.
     
     Args:
-        data (pd.DataFrame): Raw data from CSV
-        normalize (bool): Whether to normalize data
-        augment (bool): Whether to augment data
+        data (DataFrame): Données brutes
+        normalize (bool): Si True, normalise les raycasts
+        use_only_raycasts (bool): Si True, n'utilise que les raycasts comme entrées
         
     Returns:
-        tuple: X (features) and y (targets) ready for training
+        X (ndarray): Caractéristiques d'entrée 
+        y (ndarray): Cibles (direction, accélération)
     """
-    # Parse raycasts
-    processed_data = parse_raycasts(data)
+    # Extraire les raycasts
+    X_raycasts = []
+    for raycast_str in data['raycasts']:
+        rays = np.array(json.loads(raycast_str))
+        X_raycasts.append(rays)
     
-    # Normalize if requested
+    X_raycasts = np.array(X_raycasts)
+    
+    # Normaliser les raycasts si demandé
     if normalize:
-        processed_data = normalize_data(processed_data)
+        # Normalisation des raycasts (limiter entre 0-1)
+        max_raycast = 20.0  # Distance maximale des raycasts
+        X_raycasts = np.clip(X_raycasts / max_raycast, 0, 1)
     
-    # Generate features and targets
-    X, y = generate_features(processed_data)
+    # Si on utilise uniquement les raycasts
+    if use_only_raycasts:
+        X = X_raycasts
+    else:
+        # Combiner avec d'autres caractéristiques (vitesse, etc.)
+        X_speed = np.array(data['speed']).reshape(-1, 1)
+        X = np.hstack((X_raycasts, X_speed))
     
-    # Augment if requested
-    if augment:
-        X, y = augment_data(X, y)
+    # Extraire les sorties: direction et accélération
+    y_steering = np.array(data['steering_input']).reshape(-1, 1) 
+    y_accel = np.array(data['acceleration_input']).reshape(-1, 1)
+    y = np.hstack((y_steering, y_accel))
     
     return X, y
 
@@ -287,7 +302,6 @@ def get_num_rays_from_config(project_root):
     config_path = os.path.join(project_root, "config", "agent_config.json")
     try:
         with open(config_path, 'r') as f:
-            import json
             config = json.load(f)
             num_rays = config["agents"][0]["nbRay"]
             print(f"Loaded ray count from config: {num_rays}")

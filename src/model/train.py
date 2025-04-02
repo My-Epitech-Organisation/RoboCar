@@ -19,6 +19,7 @@ from data_preprocessor import load_session, preprocess_data, split_data, augment
 from model_builder import create_model
 from trainer import train_model
 from evaluator import ModelEvaluator
+from config_loader import load_train_config
 
 def main():
     # Configuration des arguments
@@ -26,7 +27,7 @@ def main():
     # parser.add_argument('--data_dir', type=str, default='data/raw',
     parser.add_argument('--data_dir', type=str, default='data/Track1',
                         help='Répertoire des données brutes')
-    parser.add_argument('--model_type', type=str, default='hybrid',
+    parser.add_argument('--model_type', type=str, default='multi',
                         choices=['simple', 'cnn', 'lstm', 'hybrid', 'multi'],
                         help='Type de modèle à entraîner')
     parser.add_argument('--epochs', type=int, default=100,
@@ -82,7 +83,8 @@ def main():
     
     # 2. Prétraiter les données
     print("Prétraitement des données...")
-    X, y = preprocess_data(data, normalize=True)
+    # Modifié pour n'utiliser que les raycasts comme entrées
+    X, y = preprocess_data(data, normalize=True, use_only_raycasts=True)
     
     # 3. Augmenter les données si demandé
     if args.augment:
@@ -99,12 +101,15 @@ def main():
     # 5. Créer le modèle
     print(f"Création du modèle {args.model_type}...")
     input_size = X_train.shape[1]
-    num_rays = input_size - 1  # Supposant que le dernier élément est la vitesse
+    num_rays = input_size  # Tous les inputs sont maintenant des raycasts
     
+    config = load_train_config()
     model = create_model(
         args.model_type, 
         input_size=input_size, 
-        num_rays=num_rays
+        num_rays=num_rays,
+        hidden_size=config['training']['model']['hidden_size'],
+        dropout_rate=config['training']['model'].get('dropout_rate', 0.2)
     )
     print(model)
     

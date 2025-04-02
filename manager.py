@@ -364,8 +364,8 @@ def custom_training():
     print("1) Simple (MLP basique)")
     print("2) CNN (Réseau convolutionnel)")
     print("3) LSTM (Réseau récurrent)")
-    print("4) Hybrid (Architecture combinée CNN+LSTM) - Recommandé")
-    print("5) Multi (Multi-entrées avec branches séparées)")
+    print("4) Hybrid (Architecture combinée CNN+LSTM)")
+    print("5) Multi (Multi-entrées avec CNN pour raycasts) - Recommandé")
     
     model_types = {
         "1": "simple",
@@ -375,17 +375,21 @@ def custom_training():
         "5": "multi"
     }
     
-    model_choice = input("Choix du modèle [4]: ").strip() or "4"
-    model_type = model_types.get(model_choice, "hybrid")
+    model_choice = input("Choix du modèle [5]: ").strip() or "5"
+    model_type = model_types.get(model_choice, "multi")
     
     # Nombre d'époques
     epochs = input("Nombre d'époques [100]: ").strip() or "100"
     
     # Taille des batchs
-    batch_size = input("Taille des batchs [32]: ").strip() or "32"
+    batch_size = input("Taille des batchs [64]: ").strip() or "64"
     
     # Taux d'apprentissage
     learning_rate = input("Taux d'apprentissage [0.001]: ").strip() or "0.001"
+    
+    # Utiliser uniquement les raycasts
+    raycast_only_choice = input("Utiliser uniquement les raycasts? (o/n) [o]: ").strip().lower() or "o"
+    raycast_flag = "--use_only_raycasts" if raycast_only_choice == "o" else "--use_all_inputs"
     
     # Augmentation des données
     augment_choice = input("Activer l'augmentation des données? (o/n) [o]: ").strip().lower() or "o"
@@ -397,6 +401,7 @@ def custom_training():
         "--epochs", epochs,
         "--batch_size", batch_size,
         "--learning_rate", learning_rate,
+        raycast_flag,
         augment_flag
     ]
     
@@ -406,6 +411,7 @@ def custom_training():
     print(f"- Époques: {epochs}")
     print(f"- Batch size: {batch_size}")
     print(f"- Learning rate: {learning_rate}")
+    print(f"- Utiliser uniquement les raycasts: {'Oui' if raycast_only_choice == 'o' else 'Non'}")
     print(f"- Augmentation: {'Activée' if augment_choice == 'o' else 'Désactivée'}")
     
     confirm = input("\nLancer l'entraînement? (o/n): ").lower().strip()

@@ -1,14 +1,19 @@
 training:
   model:
-    input_size: 12
+    type: "multi"
+    input_size: 12  # Nombre de raycasts, à ajuster selon votre configuration d'agent
     hidden_size: 64
-    output_size: 2
+    output_size: 2  # Steering et accélération
+    cnn_enabled: true
+    cnn_filters: [16, 32]
+    dropout_rate: 0.2
   hyperparams:
     batch_size: 64
     learning_rate: 0.001
-    epochs: 10
+    epochs: 100
     early_stopping: true
-    patience: 3
+    patience: 15
+    weight_decay: 1e-4
 
 paths:
   data_raw: "../data/raw"
