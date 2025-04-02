@@ -251,8 +251,28 @@ class AccelerationController:
         # Facteur de virage - réduire l'accélération dans les virages serrés
         turn_factor = 1.0 - min(1.0, abs(steering_angle) / 0.5)
         
-        # Combiner les facteurs pour ajuster l'accélération
-        adjusted_accel = predicted_accel * caution_factor * turn_factor
+        # Déterminer si nous devons freiner (valeur négative) ou accélérer (valeur positive)
+        should_brake = False
+        
+        # Freiner si:
+        # 1. Obstacle proche devant
+        if min_distance < self.caution_distance * 0.5:
+            should_brake = True
+        # 2. Virage serré à haute vitesse
+        elif abs(steering_angle) > 0.6:
+            should_brake = True
+        # 3. La prédiction du modèle est négative (le modèle a prédit un freinage)
+        elif predicted_accel < 0:
+            should_brake = True
+        
+        # Ajuster l'intensité de l'accélération ou du freinage
+        if should_brake:
+            # Valeur négative pour le freinage, plus forte si obstacle proche
+            brake_intensity = -0.5 - (1.0 - caution_factor) * 0.5
+            adjusted_accel = max(brake_intensity, predicted_accel)
+        else:
+            # Valeur positive pour l'accélération, modulée par les facteurs
+            adjusted_accel = predicted_accel * caution_factor * turn_factor
         
         # Lisser les changements d'accélération
         smooth_accel = 0.8 * adjusted_accel + 0.2 * self.last_accel

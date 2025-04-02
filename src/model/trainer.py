@@ -98,9 +98,10 @@ def train_model(model, X_train, y_train, X_val, y_val, epochs=100, batch_size=32
             optimizer, mode='min', factor=0.5, patience=7, verbose=True
         )
 
-    # Fonction de perte: MSE pour la direction, MAE pour l'accélération
+    # Fonction de perte: MSE pour la direction et l'accélération
+    # Utilisez MSE au lieu de MAE pour l'accélération pour mieux capturer les valeurs négatives
     criterion_steering = nn.MSELoss()
-    criterion_accel = nn.L1Loss()
+    criterion_accel = nn.MSELoss()
 
     # Tracking des métriques
     best_val_loss = float('inf')
@@ -125,7 +126,8 @@ def train_model(model, X_train, y_train, X_val, y_val, epochs=100, batch_size=32
             # Calculer la perte
             loss_steering = criterion_steering(outputs[:, 0], targets[:, 0])
             loss_accel = criterion_accel(outputs[:, 1], targets[:, 1])
-            loss = 0.7 * loss_steering + 1.3 * loss_accel  # Donner plus d'importance à l'accélération
+            # Donnez un poids égal aux deux composantes pour s'assurer que les valeurs négatives d'accélération sont bien apprises
+            loss = loss_steering + loss_accel
 
             # Backward pass et optimisation
             optimizer.zero_grad()

@@ -105,15 +105,11 @@ class MultiInputModel(nn.Module):
     Modèle à entrées multiples qui traite les raycasts avec CNN.
     Adapté pour fonctionner avec ou sans données d'état du véhicule.
     """
-    def __init__(self, input_size, num_rays=None, hidden_size=64, dropout_rate=0.2):
+    def __init__(self, raycast_size, other_feature_size=1, hidden_size=64, output_size=2, dropout_rate=0.2):
         super(MultiInputModel, self).__init__()
 
-        # Si num_rays n'est pas fourni, supposer que tout est raycast
-        if num_rays is None:
-            num_rays = input_size
-
-        # Nombre de caractéristiques qui ne sont pas des raycasts
-        other_features = input_size - num_rays
+        # Stocker le nombre de raycasts
+        num_rays = raycast_size
 
         # Branche CNN pour les raycasts
         self.raycast_branch = nn.Sequential(
@@ -130,10 +126,10 @@ class MultiInputModel(nn.Module):
         cnn_output_size = 32 * (num_rays - 1)
 
         # Branche pour les autres caractéristiques si elles existent
-        if other_features > 0:
+        if other_feature_size > 0:
             self.has_other_features = True
             self.other_branch = nn.Sequential(
-                nn.Linear(other_features, hidden_size // 2),
+                nn.Linear(other_feature_size, hidden_size // 2),
                 nn.ReLU(),
                 nn.Dropout(dropout_rate)
             )
@@ -151,7 +147,7 @@ class MultiInputModel(nn.Module):
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
             nn.Dropout(dropout_rate),
-            nn.Linear(hidden_size // 2, 2)  # 2 sorties: direction et accélération
+            nn.Linear(hidden_size // 2, output_size)  # Sortie configurable (par défaut 2: direction et accélération)
         )
 
     def forward(self, x):
@@ -289,32 +285,34 @@ def create_model(model_type, input_size, num_rays, hidden_size=64, output_size=2
     if other_features > 0:
         # Pour les modèles plus simples qui ne séparent pas les entrées
         if model_type == 'simple':
-            model = SimpleModel(input_size=input_size, hidden_size=hidden_size, output_size=output_size, 
-                              dropout_rate=dropout_rate)
+            model = SimpleModel(input_size=input_size, hidden_size=hidden_size)
             model.has_other_features = True
             
         # Pour les modèles CNN
         elif model_type == 'cnn':
-            model = CNNModel(input_size=input_size, num_rays=num_rays, output_size=output_size,
-                           filters=cnn_filters or [16, 32], dropout_rate=dropout_rate)
+            model = CNNModel(input_size=input_size, num_rays=num_rays)
             model.has_other_features = True
             
         # Pour les modèles LSTM
         elif model_type == 'lstm':
             model = LSTMModel(input_size=input_size, hidden_size=hidden_size, 
-                            num_layers=num_layers, output_size=output_size, dropout_rate=dropout_rate)
+                            num_layers=num_layers)
             model.has_other_features = True
             
         # Pour les modèles hybrides
         elif model_type == 'hybrid':
-            model = HybridModel(input_size=input_size, num_rays=num_rays, hidden_size=hidden_size, 
-                              output_size=output_size, dropout_rate=dropout_rate)
+            model = HybridModel(input_size=input_size, num_rays=num_rays)
             model.has_other_features = True
             
         # Pour les modèles multi-entrées (recommandé)
         else:  # model_type == 'multi' ou autre
-            model = MultiInputModel(raycast_size=num_rays, other_feature_size=other_features,
-                                  hidden_size=hidden_size, output_size=output_size, dropout_rate=dropout_rate)
+            model = MultiInputModel(
+                raycast_size=num_rays, 
+                other_feature_size=other_features,
+                hidden_size=hidden_size, 
+                output_size=output_size, 
+                dropout_rate=dropout_rate
+            )
             model.has_other_features = True
             
     else:

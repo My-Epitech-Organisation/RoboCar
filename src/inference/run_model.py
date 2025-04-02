@@ -256,8 +256,10 @@ def process_observations(obs_array, num_rays, use_only_raycasts=False):
     raycasts_normalized = np.clip(raycasts / max_raycast_value, 0, 1)
 
     # Print raycast statistics
-    print(f"Raycast min/max/mean: {np.min(raycasts):.4f}/{np.max(raycasts):.4f}/{np.mean(raycasts):.4f}")
-    print(f"First 5 raycast values: {raycasts[:5]}")
+    ##########################################################
+    # print(f"Raycast min/max/mean: {np.min(raycasts):.4f}/{np.max(raycasts):.4f}/{np.mean(raycasts):.4f}")
+    # print(f"First 5 raycast values: {raycasts[:5]}")
+    ##########################################################
 
     # Extract other observations
     try:
@@ -328,10 +330,16 @@ def run_inference_loop(env, model, model_type, input_size, num_rays, behavior_na
             if len(predictions.shape) > 1 and predictions.shape[1] > 1:
                 steering_pred = predictions[0, 0].item()
                 accel_pred = predictions[0, 1].item()
+                
+                # Garantir que l'accélération peut être négative
+                # Le modèle doit être capable de prédire des valeurs dans la plage [-1, 1]
+                # où négative signifie freinage et positive signifie accélération
+                accel_pred = max(min(accel_pred, 1.0), -1.0)
             else:
                 steering_pred = predictions.item()
-                accel_pred = 0.7  # Default acceleration
-
+                # Utiliser une valeur par défaut qui permet aussi le freinage
+                accel_pred = 0.0  # Valeur neutre au lieu de 0.7
+            
             # Apply advanced steering control with speed awareness
             smoothed_steering = steering_controller.update(steering_pred, speed, dt=0.05)
             
