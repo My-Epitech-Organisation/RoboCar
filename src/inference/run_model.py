@@ -275,7 +275,7 @@ def process_observations(obs_array, num_rays, use_only_raycasts=False):
         features = raycasts_normalized
     else:
         # Normalize speed like in training
-        speed_normalized = min(max(speed / 30.0, 0.0), 1.0)  # Assuming max speed is 30
+        speed_normalized = min(max(speed / 70.0, 0.0), 1.0)  # Utiliser la valeur max réelle de 70
         features = np.concatenate([raycasts_normalized, [speed_normalized]])
 
     return features, speed, steering, position_x, position_y, position_z
@@ -295,11 +295,18 @@ def run_inference_loop(env, model, model_type, input_size, num_rays, behavior_na
 
     # Initialize variables
     done = False
-    prev_steering = 0.0
-    steering_history = []
+    
+    # Initialize advanced controllers
+    steering_controller = utils_inference.AdvancedSteeringController(history_size=5, alpha=0.3)
+    accel_controller = utils_inference.AccelerationController(max_speed=1.0, caution_distance=0.5)
+    
+    # Performance monitoring
+    perf_monitor = utils_inference.PerformanceMonitor(log_interval=50)
 
     try:
         while not done:
+            perf_monitor.start_frame()
+            
             decision_steps, terminal_steps = env.get_steps(behavior_name)
             obs_array = decision_steps.obs[0][0]
             features, speed, obs_steering, pos_x, pos_y, pos_z = process_observations(
@@ -325,15 +332,12 @@ def run_inference_loop(env, model, model_type, input_size, num_rays, behavior_na
                 steering_pred = predictions.item()
                 accel_pred = 0.7  # Default acceleration
 
-            # Apply smoothing to reduce oscillations
-            steering_history.append(steering_pred)
-            if len(steering_history) > 3:
-                steering_history.pop(0)
-
-            smoothed_steering = sum(steering_history) / len(steering_history)
-
-            # Calculate appropriate acceleration
-            acceleration = accel_pred
+            # Apply advanced steering control with speed awareness
+            smoothed_steering = steering_controller.update(steering_pred, speed, dt=0.05)
+            
+            # Calculate appropriate acceleration considering raycasts and steering
+            raycasts = obs_array[:num_rays]
+            acceleration = accel_controller.compute_acceleration(accel_pred, raycasts, smoothed_steering)
 
             # Create and send actions to the environment
             continuous_actions = np.array([[acceleration, smoothed_steering]], dtype=np.float32)
@@ -342,13 +346,18 @@ def run_inference_loop(env, model, model_type, input_size, num_rays, behavior_na
 
             # Step the environment
             env.step()
+            
+            # Performance tracking
+            frame_time = perf_monitor.end_frame()
 
             # Display information periodically
-            print("\n[INFO] Inference state:")
-            print(f"  Speed: {speed:.2f}")
-            print(f"  Position: ({pos_x:.2f}, {pos_y:.2f}, {pos_z:.2f})")
-            print(f"  Steering prediction: {steering_pred:.4f} (smoothed: {smoothed_steering:.4f})")
-            print(f"  Acceleration: {acceleration:.4f}")
+            if perf_monitor.frame_count % 10 == 0:
+                print("\n[INFO] Inference state:")
+                print(f"  Speed: {speed:.2f}")
+                print(f"  Position: ({pos_x:.2f}, {pos_y:.2f}, {pos_z:.2f})")
+                print(f"  Steering prediction: {steering_pred:.4f} (smoothed: {smoothed_steering:.4f})")
+                print(f"  Acceleration: {acceleration:.4f}")
+                print(f"  Frame time: {frame_time:.2f}ms")
 
     except Exception as e:
         print(f"[ERROR] Exception during inference: {e}")

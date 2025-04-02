@@ -246,47 +246,94 @@ def split_data(X, y, test_size=0.2, val_size=0.2, random_state=42):
     return X_train, X_val, X_test, y_train, y_val, y_test
 
 
-def preprocess_data(data, normalize=True, use_only_raycasts=False):
+def preprocess_data(data, normalize=True, augment=True, use_only_raycasts=False):
     """
-    Prétraite les données de conduite.
-
+    Prétraite les données brutes de conduite.
+    
     Args:
-        data (DataFrame): Données brutes
-        normalize (bool): Si True, normalise les raycasts
-        use_only_raycasts (bool): Si True, n'utilise que les raycasts comme entrées
-
+        data (DataFrame): Données brutes de conduite
+        normalize (bool): Si True, normalise les features
+        augment (bool): Si True, augmente les données
+        use_only_raycasts (bool): Si True, utilise uniquement les raycasts (sans vitesse)
+    
     Returns:
-        X (ndarray): Caractéristiques d'entrée
-        y (ndarray): Cibles (direction, accélération)
+        X (np.array): Features prétraitées
+        y (np.array): Cibles (steering, acceleration)
     """
-    # Extraire les raycasts
-    X_raycasts = []
-    for raycast_str in data['raycasts']:
-        rays = np.array(json.loads(raycast_str))
-        X_raycasts.append(rays)
-
-    X_raycasts = np.array(X_raycasts)
-
-    # Normaliser les raycasts si demandé
+    # Extraire les raycasts et les convertir en tableau numpy
+    X_raycasts = extract_raycasts(data)
+    
+    # Extraire la vitesse
+    X_speed = np.array(data['speed']).reshape(-1, 1)
+    
+    # Normaliser si demandé
     if normalize:
-        # Normalisation des raycasts (limiter entre 0-1)
-        max_raycast = 260.0  # Distance maximale des raycasts
-        X_raycasts = np.clip(X_raycasts / max_raycast, 0, 1)
-
-    # Si on utilise uniquement les raycasts
-    if use_only_raycasts:
-        X = X_raycasts
-    else:
-        # Combiner avec d'autres caractéristiques (vitesse, etc.)
-        X_speed = np.array(data['speed']).reshape(-1, 1)
+        X_raycasts = normalize_raycasts(X_raycasts)
+        X_speed = X_speed / 70.0  # Normaliser la vitesse (valeur max réelle de 70)
+        X_speed = np.clip(X_speed, 0, 1)  # Limiter aux valeurs entre 0 et 1
+    
+    # Combiner les raycasts et la vitesse si nous utilisons les deux
+    if not use_only_raycasts:
         X = np.hstack((X_raycasts, X_speed))
-
-    # Extraire les sorties: direction et accélération
+    else:
+        X = X_raycasts
+    
+    # Extraire les sorties (direction et accélération)
     y_steering = np.array(data['steering_input']).reshape(-1, 1)
     y_accel = np.array(data['acceleration_input']).reshape(-1, 1)
     y = np.hstack((y_steering, y_accel))
-
+    
+    # Augmenter les données si demandé
+    if augment:
+        X, y = augment_data(X, y)
+    
     return X, y
+
+
+def extract_raycasts(data):
+    """
+    Extrait les raycasts du DataFrame et les convertit en tableau numpy.
+    
+    Args:
+        data (DataFrame): DataFrame contenant une colonne 'raycasts'
+        
+    Returns:
+        np.array: Tableau contenant les valeurs de raycasts
+    """
+    # Convertir les chaînes de raycast en tableaux numériques
+    raycasts_list = []
+    for raycast_str in data['raycasts']:
+        try:
+            # Convertir la chaîne en liste de valeurs numériques
+            raycast_values = ast.literal_eval(raycast_str)
+            raycasts_list.append(raycast_values)
+        except (ValueError, SyntaxError):
+            # En cas d'erreur, ajouter une liste vide
+            raycasts_list.append([])
+    
+    # Vérifier que toutes les listes ont la même longueur
+    if raycasts_list:
+        raycast_length = len(raycasts_list[0])
+        valid_raycasts = [r for r in raycasts_list if len(r) == raycast_length]
+        X_raycasts = np.array(valid_raycasts)
+    else:
+        X_raycasts = np.array([])
+    
+    return X_raycasts
+
+
+def normalize_raycasts(X_raycasts, max_value=260.0):
+    """
+    Normalise les valeurs de raycasts dans la plage [0, 1].
+    
+    Args:
+        X_raycasts (np.array): Tableau contenant les valeurs de raycasts
+        max_value (float): Valeur maximale attendue (pour normalisation)
+        
+    Returns:
+        np.array: Tableau des raycasts normalisés
+    """
+    return np.clip(X_raycasts / max_value, 0, 1)
 
 
 def get_num_rays_from_config(project_root):

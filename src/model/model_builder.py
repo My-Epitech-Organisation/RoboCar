@@ -264,35 +264,61 @@ class HybridModel(nn.Module):
         return output, hidden
 
 
-def create_model(model_type, input_size, num_rays=None, hidden_size=64, dropout_rate=0.2):
+def create_model(model_type, input_size, num_rays, hidden_size=64, output_size=2, 
+                cnn_filters=None, dropout_rate=0.2, num_layers=2):
     """
-    Crée un modèle selon le type spécifié.
-
+    Crée un modèle de réseau neuronal selon le type spécifié.
+    
     Args:
         model_type (str): Type de modèle ('simple', 'cnn', 'lstm', 'hybrid', 'multi')
-        input_size (int): Taille de l'entrée
-        num_rays (int): Nombre de raycasts (utile pour les modèles CNN)
+        input_size (int): Taille de l'entrée (nombre total de features)
+        num_rays (int): Nombre de raycasts
         hidden_size (int): Taille des couches cachées
-        dropout_rate (float): Taux de dropout
-
+        output_size (int): Taille de la sortie (généralement 2 pour direction et accélération)
+        cnn_filters (list): Liste des tailles des filtres CNN
+        dropout_rate (float): Taux de dropout pour régularisation
+        num_layers (int): Nombre de couches (pour les modèles LSTM)
+    
     Returns:
-        nn.Module: Modèle PyTorch
+        nn.Module: Modèle PyTorch configuré
     """
-    if model_type == 'simple':
-        return SimpleModel(input_size, hidden_size)
-    elif model_type == 'cnn':
-        if num_rays is None:
-            num_rays = input_size
-        return CNNModel(input_size, num_rays)
-    elif model_type == 'lstm':
-        return LSTMModel(input_size, hidden_size)
-    elif model_type == 'hybrid':
-        if num_rays is None:
-            num_rays = input_size
-        return HybridModel(input_size, num_rays)
-    elif model_type == 'multi':
-        if num_rays is None:
-            num_rays = input_size
-        return MultiInputModel(input_size, num_rays, hidden_size, dropout_rate)
+    # Calculer le nombre de caractéristiques autres que les raycasts (vitesse, etc.)
+    other_features = input_size - num_rays
+    
+    # Si le modèle attend seulement des raycasts mais nous avons aussi d'autres features
+    if other_features > 0:
+        # Pour les modèles plus simples qui ne séparent pas les entrées
+        if model_type == 'simple':
+            model = SimpleModel(input_size=input_size, hidden_size=hidden_size, output_size=output_size, 
+                              dropout_rate=dropout_rate)
+            model.has_other_features = True
+            
+        # Pour les modèles CNN
+        elif model_type == 'cnn':
+            model = CNNModel(input_size=input_size, num_rays=num_rays, output_size=output_size,
+                           filters=cnn_filters or [16, 32], dropout_rate=dropout_rate)
+            model.has_other_features = True
+            
+        # Pour les modèles LSTM
+        elif model_type == 'lstm':
+            model = LSTMModel(input_size=input_size, hidden_size=hidden_size, 
+                            num_layers=num_layers, output_size=output_size, dropout_rate=dropout_rate)
+            model.has_other_features = True
+            
+        # Pour les modèles hybrides
+        elif model_type == 'hybrid':
+            model = HybridModel(input_size=input_size, num_rays=num_rays, hidden_size=hidden_size, 
+                              output_size=output_size, dropout_rate=dropout_rate)
+            model.has_other_features = True
+            
+        # Pour les modèles multi-entrées (recommandé)
+        else:  # model_type == 'multi' ou autre
+            model = MultiInputModel(raycast_size=num_rays, other_feature_size=other_features,
+                                  hidden_size=hidden_size, output_size=output_size, dropout_rate=dropout_rate)
+            model.has_other_features = True
+            
     else:
-        raise ValueError(f"Type de modèle inconnu: {model_type}")
+        # Cas où nous n'avons que des raycasts (pas de vitesse)
+        raise ValueError("Model configuration requires additional features beyond raycasts.")
+    
+    return model

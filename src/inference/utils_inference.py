@@ -70,7 +70,7 @@ def smooth_steering(new_value, history, max_history=3, max_change=0.1):
     return avg_value
 
 
-def normalize_observations(obs_array, num_rays, max_raycast=260.0, max_speed=30.0):
+def normalize_observations(obs_array, num_rays, max_raycast=260.0, max_speed=70.0):
     """
     Normalize observation values to match training data normalization.
 
@@ -91,10 +91,10 @@ def normalize_observations(obs_array, num_rays, max_raycast=260.0, max_speed=30.
     speed = float(obs_array[-5]) if len(obs_array) >= 5 else 0.0
     speed_normalized = min(max(speed / max_speed, 0.0), 1.0)
 
-    # Combine features
+    # Combine features - always include speed as this is now required by our model
     features = np.concatenate([raycasts_normalized, [speed_normalized]])
 
-    return features
+    return features, raycasts, speed
 
 
 class PerformanceMonitor:
@@ -234,6 +234,7 @@ class AccelerationController:
         self.max_speed = max_speed
         self.caution_distance = caution_distance
         self.last_accel = 0.0
+        self.speed_history = []
 
     def compute_acceleration(self, predicted_accel, raycasts, steering_angle):
         """
@@ -243,18 +244,18 @@ class AccelerationController:
         # Trouver la distance minimale devant le véhicule
         forward_rays = raycasts[len(raycasts)//4:3*len(raycasts)//4]  # Rayons centraux (devant)
         min_distance = np.min(forward_rays) if len(forward_rays) > 0 else 1.0
-
+        
         # Facteur de prudence basé sur la proximité d'obstacles
         caution_factor = min(1.0, min_distance / self.caution_distance)
-
+        
         # Facteur de virage - réduire l'accélération dans les virages serrés
         turn_factor = 1.0 - min(1.0, abs(steering_angle) / 0.5)
-
+        
         # Combiner les facteurs pour ajuster l'accélération
         adjusted_accel = predicted_accel * caution_factor * turn_factor
-
+        
         # Lisser les changements d'accélération
         smooth_accel = 0.8 * adjusted_accel + 0.2 * self.last_accel
         self.last_accel = smooth_accel
-
+        
         return smooth_accel

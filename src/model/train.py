@@ -97,8 +97,8 @@ def main():
 
     # 2. Prétraiter les données
     print("Prétraitement des données...")
-    # Modifié pour n'utiliser que les raycasts comme entrées
-    X, y = preprocess_data(data, normalize=True, use_only_raycasts=True)
+    # Modifié pour TOUJOURS inclure la vitesse comme entrée
+    X, y = preprocess_data(data, normalize=True, use_only_raycasts=False)
 
     # 3. Augmenter les données si demandé
     if args.augment:
@@ -115,7 +115,7 @@ def main():
     # 5. Créer le modèle
     print(f"Création du modèle {args.model_type}...")
     input_size = X_train.shape[1]
-    num_rays = input_size  # Tous les inputs sont maintenant des raycasts
+    num_rays = input_size - 1  # Tous les inputs sont des raycasts + vitesse
 
     config = load_train_config()
     model = create_model(
