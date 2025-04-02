@@ -186,7 +186,14 @@ class HybridModel(nn.Module):
         self.seq_length = seq_length
     
     def forward(self, x, hidden=None):
-        # x shape: [batch, seq_len, input_size]
+        # Handle both 2D and 3D inputs
+        if len(x.shape) == 2:
+            # During training: reshape [batch, features] to [batch, seq_len, features]
+            batch_size, features = x.shape
+            # Duplicate the same features for each time step
+            x = x.unsqueeze(1).expand(-1, self.seq_length, -1)
+            
+        # Now x shape is [batch, seq_len, input_size]
         batch_size, seq_len, _ = x.shape
         
         # Traiter chaque pas de temps avec CNN

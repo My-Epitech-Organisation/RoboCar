@@ -24,7 +24,7 @@ def main():
     # Configuration des arguments
     parser = argparse.ArgumentParser(description='Entraînement de modèle RoboCar')
     # parser.add_argument('--data_dir', type=str, default='data/raw',
-    parser.add_argument('--data_dir', type=str, default='data',
+    parser.add_argument('--data_dir', type=str, default='data/Track1',
                         help='Répertoire des données brutes')
     parser.add_argument('--model_type', type=str, default='hybrid',
                         choices=['simple', 'cnn', 'lstm', 'hybrid', 'multi'],
@@ -91,9 +91,10 @@ def main():
         print(f"Données augmentées à {len(X)} échantillons")
     
     # 4. Diviser en ensembles d'entraînement et de validation
-    X_train, X_val, y_train, y_val = split_data(X, y, test_size=args.test_size)
+    X_train, X_val, X_test, y_train, y_val, y_test = split_data(X, y, test_size=args.test_size)
     print(f"Ensemble d'entraînement: {len(X_train)} échantillons")
     print(f"Ensemble de validation: {len(X_val)} échantillons")
+    print(f"Ensemble de test: {len(X_test)} échantillons")
     
     # 5. Créer le modèle
     print(f"Création du modèle {args.model_type}...")

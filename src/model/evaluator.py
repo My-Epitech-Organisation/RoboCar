@@ -29,7 +29,11 @@ class ModelEvaluator:
         """Génère des prédictions pour l'ensemble de test"""
         self.model.eval()
         with torch.no_grad():
-            self.predictions = self.model(self.X_test).cpu().numpy()
+            outputs = self.model(self.X_test)
+            # Gérer le cas où le modèle renvoie un tuple (outputs, hidden_state)
+            if isinstance(outputs, tuple):
+                outputs = outputs[0]  # Extraire seulement les prédictions, ignorer hidden_state
+            self.predictions = outputs.cpu().numpy()
         return self.predictions
     
     def calculate_metrics(self):

@@ -118,6 +118,10 @@ def train_model(model, X_train, y_train, X_val, y_val, epochs=100, batch_size=32
             # Forward pass
             outputs = model(inputs)
             
+            # Gérer le cas où le modèle renvoie un tuple (sortie, hidden_state)
+            if isinstance(outputs, tuple):
+                outputs = outputs[0]  # Extraire seulement la sortie, ignorer hidden_state
+            
             # Calculer la perte
             loss_steering = criterion_steering(outputs[:, 0], targets[:, 0])
             loss_accel = criterion_accel(outputs[:, 1], targets[:, 1])
@@ -141,6 +145,10 @@ def train_model(model, X_train, y_train, X_val, y_val, epochs=100, batch_size=32
         with torch.no_grad():
             for inputs, targets in val_loader:
                 outputs = model(inputs)
+                
+                # Gérer le cas où le modèle renvoie un tuple (sortie, hidden_state)
+                if isinstance(outputs, tuple):
+                    outputs = outputs[0]  # Extraire seulement la sortie, ignorer hidden_state
                 
                 # Calculer les métriques
                 steering_error = torch.abs(outputs[:, 0] - targets[:, 0])
