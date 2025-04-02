@@ -32,7 +32,7 @@ def main():
                         help='Type de modèle à entraîner')
     parser.add_argument('--epochs', type=int, default=100,
                         help='Nombre d\'époques d\'entraînement')
-    parser.add_argument('--batch_size', type=int, default=32, 
+    parser.add_argument('--batch_size', type=int, default=32,
                         help='Taille des batchs')
     parser.add_argument('--learning_rate', type=float, default=0.001,
                         help='Taux d\'apprentissage')
@@ -46,73 +46,73 @@ def main():
                         help='Seed pour la reproductibilité')
     parser.add_argument('--output_dir', type=str, default='models',
                         help='Répertoire de sortie pour les modèles')
-    
+
     args = parser.parse_args()
-    
+
     # Garantir la reproductibilité
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(args.seed)
-    
+
     # Créer le répertoire de sortie
     os.makedirs(args.output_dir, exist_ok=True)
-    
+
     # Timestamp pour l'identifiant unique de cette session
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = os.path.join(args.output_dir, f"{args.model_type}_{timestamp}")
     os.makedirs(run_dir, exist_ok=True)
-    
+
     # 1. Charger et préparer les données
     print("Chargement des données...")
     csv_files = [os.path.join(args.data_dir, f) for f in os.listdir(args.data_dir) if f.endswith('.csv')]
-    
+
     if not csv_files:
         print(f"Aucun fichier CSV trouvé dans {args.data_dir}")
         return
-    
+
     # Charger et combiner les données
     all_data = []
     for csv_file in csv_files:
         print(f"  Traitement de {os.path.basename(csv_file)}")
         data = load_session(csv_file)
         all_data.append(data)
-    
+
     data = pd.concat(all_data, ignore_index=True)
     print(f"Total de {len(data)} échantillons chargés")
-    
+
     # 2. Prétraiter les données
     print("Prétraitement des données...")
     # Modifié pour n'utiliser que les raycasts comme entrées
     X, y = preprocess_data(data, normalize=True, use_only_raycasts=True)
-    
+
     # 3. Augmenter les données si demandé
     if args.augment:
         print("Augmentation des données...")
         X, y = augment_data(X, y)
         print(f"Données augmentées à {len(X)} échantillons")
-    
+
     # 4. Diviser en ensembles d'entraînement et de validation
     X_train, X_val, X_test, y_train, y_val, y_test = split_data(X, y, test_size=args.test_size)
     print(f"Ensemble d'entraînement: {len(X_train)} échantillons")
     print(f"Ensemble de validation: {len(X_val)} échantillons")
     print(f"Ensemble de test: {len(X_test)} échantillons")
-    
+
     # 5. Créer le modèle
     print(f"Création du modèle {args.model_type}...")
     input_size = X_train.shape[1]
     num_rays = input_size  # Tous les inputs sont maintenant des raycasts
-    
+
     config = load_train_config()
     model = create_model(
-        args.model_type, 
-        input_size=input_size, 
+        args.model_type,
+        input_size=input_size,
         num_rays=num_rays,
         hidden_size=config['training']['model']['hidden_size'],
         dropout_rate=config['training']['model'].get('dropout_rate', 0.2)
     )
     print(model)
-    
+
     # 6. Entraîner le modèle
     print("Démarrage de l'entraînement...")
     model, history = train_model(
@@ -126,24 +126,24 @@ def main():
         use_scheduler=True,
         early_stopping_patience=15
     )
-    
+
     # 7. Évaluer le modèle
     print("Évaluation du modèle...")
     evaluator = ModelEvaluator(model, X_val, y_val)
     metrics = evaluator.calculate_metrics()
-    
+
     # Afficher les métriques principales
     print("\nMétriques d'évaluation:")
     print(f"  Direction - MAE: {metrics['steering']['mae']:.4f}, MSE: {metrics['steering']['mse']:.4f}")
     print(f"  Accélération - MAE: {metrics['acceleration']['mae']:.4f}, MSE: {metrics['acceleration']['mse']:.4f}")
-    
+
     # 8. Sauvegarder le rapport d'évaluation
     print("Génération du rapport d'évaluation...")
     evaluator.export_report(run_dir)
-    
+
     # 9. Visualiser l'historique d'entraînement
     plt.figure(figsize=(12, 4))
-    
+
     plt.subplot(1, 2, 1)
     plt.plot(history['train_loss'], label='Train')
     plt.plot(history['val_loss'], label='Validation')
@@ -151,7 +151,7 @@ def main():
     plt.xlabel('Époque')
     plt.ylabel('Perte')
     plt.legend()
-    
+
     plt.subplot(1, 2, 2)
     plt.plot(history['val_steering_mae'], label='Direction')
     plt.plot(history['val_accel_mae'], label='Accélération')
@@ -159,10 +159,10 @@ def main():
     plt.xlabel('Époque')
     plt.ylabel('MAE')
     plt.legend()
-    
+
     plt.tight_layout()
     plt.savefig(os.path.join(run_dir, 'training_history.png'))
-    
+
     print(f"\nEntraînement terminé. Tous les résultats sauvegardés dans {run_dir}")
     print(f"Le meilleur modèle a été sauvegardé à model_checkpoint.pth")
 

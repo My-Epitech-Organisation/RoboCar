@@ -27,7 +27,7 @@ class EarlyStopping:
         self.best_weights = None
         self.counter = 0
         self.should_stop = False
-    
+
     def __call__(self, model, val_loss):
         if val_loss < self.best_loss - self.min_delta:
             self.best_loss = val_loss
@@ -52,17 +52,17 @@ class TrainingHistory:
             'val_loss': [],
             'epoch_times': []
         }
-    
+
     def update(self, train_loss, val_loss, epoch_time):
         self.history['train_loss'].append(train_loss)
         self.history['val_loss'].append(val_loss)
         self.history['epoch_times'].append(epoch_time)
-    
+
     def get_history(self):
         return self.history
 
 
-def train_model(model, X_train, y_train, X_val, y_val, epochs=100, batch_size=32, 
+def train_model(model, X_train, y_train, X_val, y_val, epochs=100, batch_size=32,
                 learning_rate=0.001, project_root=".", use_scheduler=True,
                 early_stopping_patience=15, weight_decay=1e-4):
     """
@@ -74,34 +74,34 @@ def train_model(model, X_train, y_train, X_val, y_val, epochs=100, batch_size=32
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
-    
+
     # Convertir les données en tenseurs
     X_train_tensor = torch.FloatTensor(X_train).to(device)
     y_train_tensor = torch.FloatTensor(y_train).to(device)
     X_val_tensor = torch.FloatTensor(X_val).to(device)
     y_val_tensor = torch.FloatTensor(y_val).to(device)
-    
+
     # Préparer les datasets et dataloaders
     train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
     val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
-    
+
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
-    
+
     # Optimiseur avec régularisation L2
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    
+
     # Planificateur de taux d'apprentissage
     scheduler = None
     if use_scheduler:
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode='min', factor=0.5, patience=7, verbose=True
         )
-    
+
     # Fonction de perte: MSE pour la direction, MAE pour l'accélération
     criterion_steering = nn.MSELoss()
     criterion_accel = nn.L1Loss()
-    
+
     # Tracking des métriques
     best_val_loss = float('inf')
     best_model_path = os.path.join(project_root, "model_checkpoint.pth")
@@ -113,82 +113,82 @@ def train_model(model, X_train, y_train, X_val, y_val, epochs=100, batch_size=32
         # Mode entraînement
         model.train()
         train_loss = 0.0
-        
+
         for inputs, targets in train_loader:
             # Forward pass
             outputs = model(inputs)
-            
+
             # Gérer le cas où le modèle renvoie un tuple (sortie, hidden_state)
             if isinstance(outputs, tuple):
                 outputs = outputs[0]  # Extraire seulement la sortie, ignorer hidden_state
-            
+
             # Calculer la perte
             loss_steering = criterion_steering(outputs[:, 0], targets[:, 0])
             loss_accel = criterion_accel(outputs[:, 1], targets[:, 1])
             loss = 0.7 * loss_steering + 1.3 * loss_accel  # Donner plus d'importance à l'accélération
-            
+
             # Backward pass et optimisation
             optimizer.zero_grad()
             loss.backward()
             # Gradient clipping pour stabilité
             nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
-            
+
             train_loss += loss.item()
-        
+
         # Mode évaluation
         model.eval()
         val_loss = 0.0
         steering_errors = []
         accel_errors = []
-        
+
         with torch.no_grad():
             for inputs, targets in val_loader:
                 outputs = model(inputs)
-                
+
                 # Gérer le cas où le modèle renvoie un tuple (sortie, hidden_state)
                 if isinstance(outputs, tuple):
                     outputs = outputs[0]  # Extraire seulement la sortie, ignorer hidden_state
-                
+
                 # Calculer les métriques
                 steering_error = torch.abs(outputs[:, 0] - targets[:, 0])
                 accel_error = torch.abs(outputs[:, 1] - targets[:, 1])
-                
+
                 steering_errors.extend(steering_error.cpu().numpy())
                 accel_errors.extend(accel_error.cpu().numpy())
-                
+
                 # Perte totale
                 loss_steering = criterion_steering(outputs[:, 0], targets[:, 0])
                 loss_accel = criterion_accel(outputs[:, 1], targets[:, 1])
                 loss = loss_steering + 0.5 * loss_accel
                 val_loss += loss.item()
-        
+
         # Calcul des moyennes
         train_loss /= len(train_loader)
         val_loss /= len(val_loader)
         val_steering_mae = np.mean(steering_errors)
         val_accel_mae = np.mean(accel_errors)
-        
+
         # Mettre à jour le scheduler
         if scheduler:
             scheduler.step(val_loss)
-        
+
         # Sauvegarder les métriques
         history['train_loss'].append(train_loss)
         history['val_loss'].append(val_loss)
         history['val_steering_mae'].append(val_steering_mae)
         history['val_accel_mae'].append(val_accel_mae)
-        
+
         # Afficher progression
         print(f"Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, "
               f"Steering MAE: {val_steering_mae:.4f}, Accel MAE: {val_accel_mae:.4f}")
-        
+
         # Sauvegarder le meilleur modèle
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             # Déterminer si le modèle utilise uniquement des raycasts
             use_only_raycasts = hasattr(model, 'has_other_features') and not model.has_other_features
-            
+
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
@@ -203,23 +203,23 @@ def train_model(model, X_train, y_train, X_val, y_val, epochs=100, batch_size=32
             print(f"Meilleur modèle sauvegardé (perte: {val_loss:.4f})")
         else:
             patience_counter += 1
-            
+
         # Early stopping
         if patience_counter >= early_stopping_patience:
             print(f"Early stopping activé après {epoch+1} époques")
             break
-    
+
     # Charger le meilleur modèle
     checkpoint = torch.load(best_model_path)
     model.load_state_dict(checkpoint['model_state_dict'])
-    
+
     return model, history
 
 
 def save_model(model, path, input_size=None, model_type=None, metadata=None):
     """
     Save trained model with metadata.
-    
+
     Args:
         model (nn.Module): Trained PyTorch model
         path (str): Path to save the model
@@ -229,25 +229,25 @@ def save_model(model, path, input_size=None, model_type=None, metadata=None):
     """
     # Create directory if it doesn't exist
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    
+
     # Prepare metadata
     if metadata is None:
         metadata = {}
-    
+
     if input_size is not None:
         metadata['input_size'] = input_size
-    
+
     if model_type is not None:
         metadata['model_type'] = model_type
-    
+
     metadata['timestamp'] = time.strftime("%Y-%m-%d %H:%M:%S")
-    
+
     # Save model state
     model_state = {
         'model_state_dict': model.state_dict(),
         'metadata': metadata
     }
-    
+
     # Save to file
     torch.save(model_state, path)
     print(f"Model saved to {path}")

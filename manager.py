@@ -142,13 +142,13 @@ def run_script(script_path, args=None, description=None):
     """
     if description:
         print(f"[INFO] Lancement de {description}...")
-    
+
     _, activate_cmd = get_activate_command()
     cmd = f"{activate_cmd} && python {script_path}"
-    
+
     if args:
         cmd += " " + " ".join(args)
-    
+
     try:
         subprocess.run(cmd, shell=True, check=True)
         return True
@@ -162,7 +162,7 @@ def check_system_resources():
     Vérifie et affiche les ressources système disponibles.
     """
     print("\n=== Ressources système ===")
-    
+
     # Vérifier l'espace disque
     try:
         import shutil
@@ -170,7 +170,7 @@ def check_system_resources():
         print(f"Espace disque: {free // (2**30)} GB libre sur {total // (2**30)} GB")
     except Exception as e:
         print(f"Impossible de vérifier l'espace disque: {e}")
-    
+
     # Vérifier la disponibilité du GPU
     try:
         _, activate_cmd = get_activate_command()
@@ -179,7 +179,7 @@ def check_system_resources():
         print(result.stdout.strip())
     except Exception as e:
         print(f"Impossible de vérifier le GPU: {e}")
-    
+
     # Vérifier la RAM
     try:
         import psutil
@@ -198,34 +198,34 @@ def check_system_resources():
 def update_agent_config(fov=None, nb_ray=None):
     """
     Met à jour la configuration des agents (FOV, nombre de raycasts).
-    
+
     Args:
         fov (int): Champ de vision en degrés (1-180)
         nb_ray (int): Nombre de raycasts (1-50)
     """
     config_path = "config/agent_config.json"
-    
+
     # Créer le répertoire si nécessaire
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
-    
+
     # Charger la configuration existante ou créer une nouvelle
     if os.path.exists(config_path):
         with open(config_path, 'r') as f:
             config = json.load(f)
     else:
         config = {"agents": [{"fov": 180, "nbRay": 10}]}
-    
+
     # Mettre à jour les valeurs si spécifiées
     if fov is not None:
         config["agents"][0]["fov"] = min(max(1, fov), 180)
-    
+
     if nb_ray is not None:
         config["agents"][0]["nbRay"] = min(max(1, nb_ray), 50)
-    
+
     # Enregistrer la configuration
     with open(config_path, 'w') as f:
         json.dump(config, f, indent=2)
-    
+
     print(f"[INFO] Configuration mise à jour: FOV={config['agents'][0]['fov']}, nbRay={config['agents'][0]['nbRay']}")
 
 
@@ -247,12 +247,12 @@ def collect_data_menu():
             session_name = input("Nom de la session (laissez vide pour auto): ").strip()
             args = ["--session_name", session_name] if session_name else []
             run_script("src/collector/collect_data.py", args, "la collecte de données")
-        
+
         elif choice == "2":
             # Collecte avec calibration
-            run_script("src/collector/collect_data.py", ["--calibrate"], 
+            run_script("src/collector/collect_data.py", ["--calibrate"],
                       "la collecte avec calibration du joystick")
-        
+
         elif choice == "3":
             # Configuration des capteurs
             try:
@@ -261,7 +261,7 @@ def collect_data_menu():
                 update_agent_config(fov, nb_ray)
             except ValueError:
                 print("[ERREUR] Veuillez entrer des valeurs numériques valides.")
-        
+
         elif choice == "4":
             # Collecte de données de récupération
             print("[INFO] Mode collecte de récupération")
@@ -269,15 +269,15 @@ def collect_data_menu():
             print("Placez la voiture près des bords et corrigez la trajectoire.")
             run_script("src/collector/collect_data.py", ["--session_name", "recovery_training"],
                       "la collecte de données de récupération")
-        
+
         elif choice == "5":
             # Afficher les sessions existantes
             list_data_sessions()
-        
+
         elif choice == "6":
             # Retour
             break
-        
+
         else:
             print("[ERREUR] Choix invalide. Réessayez.")
 
@@ -288,19 +288,19 @@ def list_data_sessions():
     if not os.path.exists(data_dir):
         print("[INFO] Aucune donnée collectée pour l'instant.")
         return
-    
+
     files = glob.glob(os.path.join(data_dir, "*.csv"))
     if not files:
         print("[INFO] Aucune donnée collectée pour l'instant.")
         return
-    
+
     print("\n=== SESSIONS DE DONNÉES DISPONIBLES ===")
     total_size = 0
     for i, file_path in enumerate(sorted(files), 1):
         file_name = os.path.basename(file_path)
         size_kb = os.path.getsize(file_path) / 1024
         total_size += size_kb
-        
+
         # Compter les lignes (échantillons)
         try:
             with open(file_path, 'r') as f:
@@ -308,7 +308,7 @@ def list_data_sessions():
             print(f"{i}. {file_name} - {size_kb:.1f} KB - {lines} échantillons")
         except Exception:
             print(f"{i}. {file_name} - {size_kb:.1f} KB")
-    
+
     print(f"\nTotal: {len(files)} sessions, {total_size/1024:.2f} MB")
 
 
@@ -330,27 +330,27 @@ def training_menu():
         if choice == "1":
             # Entraînement rapide
             run_script("src/model/train.py", description="l'entraînement rapide")
-        
+
         elif choice == "2":
             # Entraînement personnalisé
             custom_training()
-        
+
         elif choice == "3":
             # Analyser les résultats
             analyze_training_results()
-        
+
         elif choice == "4":
             # Gérer les modèles
             manage_models()
-        
+
         elif choice == "5":
             # Visualiser les données
             visualize_training_data()
-        
+
         elif choice == "6":
             # Retour
             break
-        
+
         else:
             print("[ERREUR] Choix invalide. Réessayez.")
 
@@ -358,7 +358,7 @@ def training_menu():
 def custom_training():
     """Interface pour configurer un entraînement personnalisé."""
     print("\n=== CONFIGURATION D'ENTRAÎNEMENT PERSONNALISÉ ===")
-    
+
     # Type de modèle
     print("\nChoix du type de modèle:")
     print("1) Simple (MLP basique)")
@@ -366,7 +366,7 @@ def custom_training():
     print("3) LSTM (Réseau récurrent)")
     print("4) Hybrid (Architecture combinée CNN+LSTM)")
     print("5) Multi (Multi-entrées avec CNN pour raycasts) - Recommandé")
-    
+
     model_types = {
         "1": "simple",
         "2": "cnn",
@@ -374,27 +374,27 @@ def custom_training():
         "4": "hybrid",
         "5": "multi"
     }
-    
+
     model_choice = input("Choix du modèle [5]: ").strip() or "5"
     model_type = model_types.get(model_choice, "multi")
-    
+
     # Nombre d'époques
     epochs = input("Nombre d'époques [100]: ").strip() or "100"
-    
+
     # Taille des batchs
     batch_size = input("Taille des batchs [64]: ").strip() or "64"
-    
+
     # Taux d'apprentissage
     learning_rate = input("Taux d'apprentissage [0.001]: ").strip() or "0.001"
-    
+
     # Utiliser uniquement les raycasts
     raycast_only_choice = input("Utiliser uniquement les raycasts? (o/n) [o]: ").strip().lower() or "o"
     raycast_flag = "--use_only_raycasts" if raycast_only_choice == "o" else "--use_all_inputs"
-    
+
     # Augmentation des données
     augment_choice = input("Activer l'augmentation des données? (o/n) [o]: ").strip().lower() or "o"
     augment_flag = "--augment" if augment_choice == "o" else "--no_augment"
-    
+
     # Construire la commande
     args = [
         "--model_type", model_type,
@@ -404,7 +404,7 @@ def custom_training():
         raycast_flag,
         augment_flag
     ]
-    
+
     # Confirmation
     print("\nConfiguration d'entraînement:")
     print(f"- Modèle: {model_type}")
@@ -413,10 +413,10 @@ def custom_training():
     print(f"- Learning rate: {learning_rate}")
     print(f"- Utiliser uniquement les raycasts: {'Oui' if raycast_only_choice == 'o' else 'Non'}")
     print(f"- Augmentation: {'Activée' if augment_choice == 'o' else 'Désactivée'}")
-    
+
     confirm = input("\nLancer l'entraînement? (o/n): ").lower().strip()
     if confirm == "o":
-        run_script("src/model/train.py", args, 
+        run_script("src/model/train.py", args,
                   f"l'entraînement personnalisé (modèle {model_type})")
 
 
@@ -426,15 +426,15 @@ def analyze_training_results():
     if not os.path.exists(model_dir):
         print("[INFO] Aucun résultat d'entraînement disponible.")
         return
-    
+
     # Trouver tous les dossiers d'entraînement
-    training_dirs = [d for d in os.listdir(model_dir) 
+    training_dirs = [d for d in os.listdir(model_dir)
                     if os.path.isdir(os.path.join(model_dir, d))]
-    
+
     if not training_dirs:
         print("[INFO] Aucun résultat d'entraînement disponible.")
         return
-    
+
     print("\n=== SESSIONS D'ENTRAÎNEMENT DISPONIBLES ===")
     for i, dir_name in enumerate(sorted(training_dirs), 1):
         metrics_path = os.path.join(model_dir, dir_name, "metrics.json")
@@ -446,11 +446,11 @@ def analyze_training_results():
             print(f"{i}. {dir_name} - Direction MAE: {steer_mae:.4f}, Accélération MAE: {accel_mae:.4f}")
         else:
             print(f"{i}. {dir_name} - (Métriques non disponibles)")
-    
+
     choice = input("\nSélectionnez une session à analyser (n° ou r pour retour): ").strip()
     if choice.lower() == "r":
         return
-    
+
     try:
         idx = int(choice) - 1
         if 0 <= idx < len(training_dirs):
@@ -461,11 +461,11 @@ def analyze_training_results():
                 os.path.join(model_dir, session_dir, "error_distribution.png"),
                 os.path.join(model_dir, session_dir, "training_history.png")
             ]
-            
+
             for graph in graph_files:
                 if os.path.exists(graph):
                     platform_open(graph)
-            
+
             # Afficher les métriques détaillées
             metrics_path = os.path.join(model_dir, session_dir, "metrics.json")
             if os.path.exists(metrics_path):
@@ -500,7 +500,7 @@ def platform_open(file_path):
 def manage_models():
     """Interface pour gérer les modèles entraînés."""
     print("\n=== GESTION DES MODÈLES ===")
-    
+
     # Lister les modèles disponibles
     model_checkpoint = "model_checkpoint.pth"
     if os.path.exists(model_checkpoint):
@@ -508,7 +508,7 @@ def manage_models():
         print(f"\nModèle principal actif: {model_checkpoint} ({size_mb:.2f} MB)")
     else:
         print("\n[ATTENTION] Aucun modèle principal trouvé!")
-    
+
     # Options de gestion
     print("\nOptions:")
     print("1) Utiliser un modèle entraîné comme modèle principal")
@@ -516,9 +516,9 @@ def manage_models():
     print("3) Exporter le modèle principal (pour déploiement)")
     print("4) Afficher les informations sur le modèle principal")
     print("5) Retour")
-    
+
     choice = input("\nVotre choix: ").strip()
-    
+
     if choice == "1":
         # Utiliser un modèle comme principal
         select_model_as_main()
@@ -543,28 +543,28 @@ def select_model_as_main():
     if not os.path.exists(models_dir):
         print("[INFO] Aucun modèle entraîné disponible.")
         return
-    
+
     # Trouver tous les fichiers modèles dans les sous-répertoires
     model_files = []
     for root, _, files in os.walk(models_dir):
         for file in files:
             if file.endswith(".pth"):
                 model_files.append(os.path.join(root, file))
-    
+
     if not model_files:
         print("[INFO] Aucun modèle (.pth) trouvé.")
         return
-    
+
     print("\n=== MODÈLES DISPONIBLES ===")
     for i, path in enumerate(model_files, 1):
         rel_path = os.path.relpath(path, ".")
         size_mb = os.path.getsize(path) / (1024 * 1024)
         print(f"{i}. {rel_path} ({size_mb:.2f} MB)")
-    
+
     choice = input("\nSélectionnez un modèle (n° ou r pour retour): ").strip()
     if choice.lower() == "r":
         return
-    
+
     try:
         idx = int(choice) - 1
         if 0 <= idx < len(model_files):
@@ -584,25 +584,25 @@ def delete_models():
     if not os.path.exists(models_dir):
         print("[INFO] Aucun modèle à supprimer.")
         return
-    
+
     # Lister les dossiers de sessions d'entraînement
-    training_dirs = [d for d in os.listdir(models_dir) 
+    training_dirs = [d for d in os.listdir(models_dir)
                     if os.path.isdir(os.path.join(models_dir, d))]
-    
+
     if not training_dirs:
         print("[INFO] Aucune session d'entraînement à supprimer.")
         return
-    
+
     print("\n=== SESSIONS D'ENTRAÎNEMENT ===")
     for i, dir_name in enumerate(sorted(training_dirs), 1):
         dir_path = os.path.join(models_dir, dir_name)
         dir_size = get_dir_size(dir_path) / (1024 * 1024)  # MB
         print(f"{i}. {dir_name} ({dir_size:.2f} MB)")
-    
+
     choice = input("\nSélectionnez une session à supprimer (n° ou r pour retour): ").strip()
     if choice.lower() == "r":
         return
-    
+
     try:
         idx = int(choice) - 1
         if 0 <= idx < len(training_dirs):
@@ -633,15 +633,15 @@ def export_model():
     if not os.path.exists(model_path):
         print("[ERREUR] Aucun modèle principal trouvé!")
         return
-    
+
     export_dir = "export"
     os.makedirs(export_dir, exist_ok=True)
-    
+
     # Créer un nom de fichier avec horodatage
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     export_name = f"robocar_model_{timestamp}.pth"
     export_path = os.path.join(export_dir, export_name)
-    
+
     # Copier le modèle
     shutil.copy2(model_path, export_path)
     print(f"[INFO] Modèle exporté vers: {export_path}")
@@ -653,7 +653,7 @@ def display_model_info():
     if not os.path.exists(model_path):
         print("[ERREUR] Aucun modèle principal trouvé!")
         return
-    
+
     try:
         _, activate_cmd = get_activate_command()
         cmd = f"{activate_cmd} && python -c \"import torch; m = torch.load('{model_path}'); print('=== INFORMATIONS MODÈLE ==='); [print(f'{k}: {v}') for k, v in m.items() if k != 'model_state_dict']\""
@@ -665,13 +665,13 @@ def display_model_info():
 def visualize_training_data():
     """Visualise les données d'entraînement."""
     print("\n=== VISUALISATION DES DONNÉES ===")
-    
+
     # Vérifier si les données existent
     data_dir = "data/raw"
     if not os.path.exists(data_dir) or not os.listdir(data_dir):
         print("[INFO] Aucune donnée disponible à visualiser.")
         return
-    
+
     print("Cette fonction lancera une visualisation de vos données d'entraînement.")
     print("Options:")
     print("1) Distribution des commandes de direction")
@@ -679,9 +679,9 @@ def visualize_training_data():
     print("3) Visualisation des trajectoires")
     print("4) Statistiques des données")
     print("5) Retour")
-    
+
     choice = input("\nVotre choix: ").strip()
-    
+
     script_path = "src/utils/data_visualizer.py"
     if choice == "1":
         args = ["--type", "steering"]
@@ -719,29 +719,29 @@ def inference_menu():
         if choice == "1":
             # Inférence standard
             run_script("src/inference/run_model.py", description="l'inférence")
-        
+
         elif choice == "2":
             # Inférence avec options
             custom_inference()
-        
+
         elif choice == "3":
             # Test de performance
             performance_test()
-        
+
         elif choice == "4":
             # Mode démonstration
-            run_script("src/inference/run_model.py", ["--mode", "demo"], 
+            run_script("src/inference/run_model.py", ["--mode", "demo"],
                       "le mode démonstration")
-        
+
         elif choice == "5":
             # Mode évaluation
-            run_script("src/inference/run_model.py", ["--mode", "eval"], 
+            run_script("src/inference/run_model.py", ["--mode", "eval"],
                       "le mode évaluation")
-        
+
         elif choice == "6":
             # Retour
             break
-        
+
         else:
             print("[ERREUR] Choix invalide. Réessayez.")
 
@@ -749,11 +749,11 @@ def inference_menu():
 def custom_inference():
     """Interface pour configurer l'inférence avec des options avancées."""
     print("\n=== CONFIGURATION D'INFÉRENCE AVANCÉE ===")
-    
+
     # Utilisation d'un modèle spécifique
     use_custom_model = input("Utiliser un modèle spécifique? (o/n): ").lower() == "o"
     model_path = None
-    
+
     if use_custom_model:
         # Lister les modèles disponibles
         models_dir = "models"
@@ -763,13 +763,13 @@ def custom_inference():
                 for file in files:
                     if file.endswith(".pth"):
                         all_models.append(os.path.join(root, file))
-            
+
             if all_models:
                 print("\nModèles disponibles:")
                 for i, path in enumerate(all_models, 1):
                     rel_path = os.path.relpath(path, ".")
                     print(f"{i}. {rel_path}")
-                
+
                 try:
                     choice = int(input("\nChoisissez un modèle (n°): ").strip())
                     if 1 <= choice <= len(all_models):
@@ -778,16 +778,16 @@ def custom_inference():
                         print("[ERREUR] Choix invalide. Utilisation du modèle par défaut.")
                 except ValueError:
                     print("[ERREUR] Entrée invalide. Utilisation du modèle par défaut.")
-    
+
     # Options de lissage
     smooth_factor = input("Facteur de lissage (0.0-1.0) [0.3]: ").strip() or "0.3"
-    
+
     # Vitesse maximale
     max_speed = input("Vitesse maximale (0.0-1.0) [1.0]: ").strip() or "1.0"
-    
+
     # Mode debug
     debug_mode = input("Activer le mode debug? (o/n) [n]: ").lower() == "o"
-    
+
     # Construire les arguments
     args = []
     if model_path:
@@ -796,7 +796,7 @@ def custom_inference():
     args.extend(["--max_speed", max_speed])
     if debug_mode:
         args.append("--debug")
-    
+
     # Lancer l'inférence
     run_script("src/inference/run_model.py", args, "l'inférence personnalisée")
 
@@ -809,10 +809,10 @@ def performance_test():
     print("- FPS (images par seconde)")
     print("- Utilisation mémoire")
     print("- Stabilité des prédictions")
-    
+
     duration = input("Durée du test en secondes [30]: ").strip() or "30"
-    
-    run_script("src/inference/performance_test.py", ["--duration", duration], 
+
+    run_script("src/inference/performance_test.py", ["--duration", duration],
               "le test de performance")
 
 
@@ -834,27 +834,27 @@ def maintenance_menu():
         if choice == "1":
             # Vérifier les ressources
             check_system_resources()
-        
+
         elif choice == "2":
             # Nettoyer
             clean_disk_space()
-        
+
         elif choice == "3":
             # Mettre à jour
             update_dependencies()
-        
+
         elif choice == "4":
             # Sauvegarde
             create_backup()
-        
+
         elif choice == "5":
             # Déploiement
             deployment_options()
-        
+
         elif choice == "6":
             # Retour
             break
-        
+
         else:
             print("[ERREUR] Choix invalide. Réessayez.")
 
@@ -868,9 +868,9 @@ def clean_disk_space():
     print("3) Supprimer les anciennes sessions d'entraînement")
     print("4) Supprimer tous les modèles (sauf principal)")
     print("5) Retour")
-    
+
     choice = input("\nVotre choix: ").strip()
-    
+
     if choice == "1":
         # Nettoyage fichiers temporaires
         clean_temp_files()
@@ -895,7 +895,7 @@ def clean_temp_files():
     """Nettoie les fichiers temporaires."""
     temp_dirs = ["__pycache__", ".pytest_cache", ".ipynb_checkpoints"]
     deleted_count = 0
-    
+
     for root, dirs, files in os.walk("."):
         for d in dirs:
             if d in temp_dirs:
@@ -906,7 +906,7 @@ def clean_temp_files():
                     print(f"[INFO] Supprimé: {path}")
                 except Exception as e:
                     print(f"[ERREUR] Impossible de supprimer {path}: {e}")
-    
+
     print(f"[INFO] {deleted_count} répertoires temporaires supprimés.")
 
 
@@ -916,13 +916,13 @@ def archive_data():
     if not os.path.exists(data_dir):
         print("[INFO] Aucune donnée à archiver.")
         return
-    
+
     # Lister les sessions de données
     files = glob.glob(os.path.join(data_dir, "*.csv"))
     if not files:
         print("[INFO] Aucune donnée à archiver.")
         return
-    
+
     print("\n=== SESSIONS DE DONNÉES DISPONIBLES ===")
     for i, file_path in enumerate(sorted(files), 1):
         file_name = os.path.basename(file_path)
@@ -930,14 +930,14 @@ def archive_data():
         mtime = os.path.getmtime(file_path)
         date_str = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
         print(f"{i}. {file_name} - {size_kb:.1f} KB - {date_str}")
-    
+
     # Créer un répertoire d'archive
     archive_dir = "data/archive"
     os.makedirs(archive_dir, exist_ok=True)
-    
+
     # Archiver les fichiers sélectionnés
     selection = input("\nSélectionnez les fichiers à archiver (ex: 1,3,5 ou 'all' pour tous): ").strip()
-    
+
     if selection.lower() == "all":
         indices = range(len(files))
     else:
@@ -946,17 +946,17 @@ def archive_data():
         except ValueError:
             print("[ERREUR] Format de sélection invalide.")
             return
-    
+
     # Vérifier les indices
     valid_indices = [idx for idx in indices if 0 <= idx < len(files)]
     if not valid_indices:
         print("[ERREUR] Aucun fichier valide sélectionné.")
         return
-    
+
     # Créer une archive zip
     archive_name = f"data_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
     archive_path = os.path.join(archive_dir, archive_name)
-    
+
     try:
         import zipfile
         with zipfile.ZipFile(archive_path, 'w') as zipf:
@@ -964,14 +964,14 @@ def archive_data():
                 file_path = files[idx]
                 zipf.write(file_path, os.path.basename(file_path))
                 print(f"[INFO] Archivé: {os.path.basename(file_path)}")
-        
+
         # Demander si l'utilisateur veut supprimer les originaux
         delete_orig = input("\nSupprimer les fichiers originaux? (o/n): ").lower() == "o"
         if delete_orig:
             for idx in valid_indices:
                 os.remove(files[idx])
                 print(f"[INFO] Supprimé: {os.path.basename(files[idx])}")
-        
+
         print(f"[INFO] Archive créée: {archive_path}")
     except Exception as e:
         print(f"[ERREUR] Échec de l'archivage: {e}")
@@ -983,31 +983,31 @@ def remove_all_models_except_main():
     if not os.path.exists(models_dir):
         print("[INFO] Aucun modèle à supprimer.")
         return
-    
+
     # Compter avant
     model_count = 0
     for root, _, files in os.walk(models_dir):
         for file in files:
             if file.endswith(".pth"):
                 model_count += 1
-    
+
     # Supprimer les dossiers de modèles
     for item in os.listdir(models_dir):
         item_path = os.path.join(models_dir, item)
         if os.path.isdir(item_path):
             shutil.rmtree(item_path)
             print(f"[INFO] Supprimé: {item_path}")
-    
+
     print(f"[INFO] {model_count} modèles supprimés.")
 
 
 def update_dependencies():
     """Met à jour les dépendances du projet."""
     print("\n=== MISE À JOUR DES DÉPENDANCES ===")
-    
+
     _, activate_cmd = get_activate_command()
     cmd = f"{activate_cmd} && pip install --upgrade -r requirements.txt"
-    
+
     try:
         subprocess.run(cmd, shell=True, check=True)
         print("[INFO] Dépendances mises à jour avec succès.")
@@ -1018,56 +1018,56 @@ def update_dependencies():
 def create_backup():
     """Crée une sauvegarde du projet."""
     print("\n=== CRÉATION D'UNE SAUVEGARDE ===")
-    
+
     # Répertoire de sauvegarde
     backup_dir = "backups"
     os.makedirs(backup_dir, exist_ok=True)
-    
+
     # Nom du fichier de sauvegarde
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_name = f"robocar_backup_{timestamp}.zip"
     backup_path = os.path.join(backup_dir, backup_name)
-    
+
     # Éléments à inclure/exclure
     include_dirs = ["src", "config", "data", "models"]
     include_files = ["manager.py", "requirements.txt"]
     exclude_patterns = ["__pycache__", ".venv", "*.pyc"]
-    
+
     print("Éléments à sauvegarder:")
     for d in include_dirs:
         print(f"- {d}/")
     for f in include_files:
         print(f"- {f}")
-    
+
     confirm = input("\nCréer la sauvegarde? (o/n): ").lower()
     if confirm != "o":
         return
-    
+
     try:
         import zipfile
-        
+
         with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             # Ajouter les fichiers individuels
             for file in include_files:
                 if os.path.exists(file):
                     zipf.write(file)
                     print(f"[INFO] Ajouté: {file}")
-            
+
             # Ajouter les répertoires
             for directory in include_dirs:
                 if os.path.exists(directory):
                     for root, dirs, files in os.walk(directory):
                         # Filtrer les répertoires exclus
                         dirs[:] = [d for d in dirs if not any(
-                            pattern.rstrip('/') == d or 
+                            pattern.rstrip('/') == d or
                             (pattern.endswith('*') and d.startswith(pattern[:-1]))
                             for pattern in exclude_patterns
                         )]
-                        
+
                         for file in files:
                             # Filtrer les fichiers exclus
                             if not any(
-                                pattern == file or 
+                                pattern == file or
                                 (pattern.startswith('*') and file.endswith(pattern[1:])) or
                                 (pattern.endswith('*') and file.startswith(pattern[:-1]))
                                 for pattern in exclude_patterns
@@ -1076,7 +1076,7 @@ def create_backup():
                                 arcname = os.path.relpath(file_path, '.')
                                 zipf.write(file_path, arcname)
                                 print(f"[INFO] Ajouté: {arcname}")
-        
+
         backup_size = os.path.getsize(backup_path) / (1024 * 1024)  # MB
         print(f"[INFO] Sauvegarde créée: {backup_path} ({backup_size:.2f} MB)")
     except Exception as e:
@@ -1090,9 +1090,9 @@ def deployment_options():
     print("2) Exporter modèle optimisé")
     print("3) Générer package de déploiement")
     print("4) Retour")
-    
+
     choice = input("\nVotre choix: ").strip()
-    
+
     if choice == "1":
         run_script("src/deploy/quantize_model.py", description="la préparation du modèle pour Jetson Nano")
     elif choice == "2":
@@ -1111,12 +1111,12 @@ def display_welcome():
     """Affiche un message de bienvenue avec logo ASCII."""
     print("\n" + "="*60)
     print("""
-    ____       _           ____            
-   / __ \____  (_)_________/ __ \_________ 
+    ____       _           ____
+   / __ \____  (_)_________/ __ \_________
   / /_/ / __ \/ / ___/ ___/ /_/ / ___/ __ \\
  / _, _/ /_/ / / /__/ /  / _, _/ /__/ /_/ /
-/_/ |_|\____/_/\___/_/  /_/ |_|\___/\____/ 
-                                          
+/_/ |_|\____/_/\___/_/  /_/ |_|\___/\____/
+    
      Système de gestion du projet RoboCar
     """)
     print("="*60 + "\n")
