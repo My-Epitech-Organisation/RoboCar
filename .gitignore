@@ -3,6 +3,7 @@ OldRacingSimulatorLinux/
 RacingSimulatorLinux/
 .venv
 data/raw
+temp/
 __pycache__
 .vscode
 
