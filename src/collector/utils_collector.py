@@ -31,9 +31,13 @@ key_states = {
 # True = single stick mode (original, left stick for both)
 single_stick_mode = False
 last_y_button_state = False
+last_x_button_state = False  # Track Xbox X button state
 
 # Global variable to track wheel mode
 wheel_mode = False
+
+# Global variable for Xbox mode
+xbox_mode = False  # New variable for Xbox controller mode
 
 # Global variables for custom input configuration
 steering_device = None
@@ -276,7 +280,7 @@ def get_joystick_input(joystick):
     Returns:
         tuple: (steering, acceleration) - Values between -1.0 and 1.0
     """
-    global single_stick_mode, last_y_button_state
+    global single_stick_mode, last_y_button_state, xbox_mode, last_x_button_state
     
     if joystick is None:
         return 0.0, 0.0
@@ -308,29 +312,105 @@ def get_joystick_input(joystick):
             print(f"[INFO] Switched to {mode_name} control mode")
             
         last_y_button_state = current_y_state
+        
+        # Check X button for Xbox controller mode toggle
+        # For most Xbox controllers, X is button 0
+        current_x_state = joystick.get_button(0)
+        
+        if current_x_state and not last_x_button_state:
+            xbox_mode = not xbox_mode
+            print(f"[INFO] Xbox controller mode {'enabled' if xbox_mode else 'disabled'}")
+            
+        last_x_button_state = current_x_state
+        
     except (pygame.error, IndexError):
         # If we can't read the button, just continue with current mode
         pass
 
     try:
-        # In both modes, steering comes from left stick horizontal
-        steering_axis = joystick.get_axis(0)
-        
-        if single_stick_mode:
-            # Original mode: left stick vertical for acceleration
-            accel_axis = joystick.get_axis(1)
-        else:
-            # Dual stick mode: right stick vertical for acceleration
-            # Typically right stick vertical is axis 3 or 4 depending on the controller
-            try:
-                accel_axis = joystick.get_axis(3)  # Try common right stick vertical index
-            except (pygame.error, IndexError):
+        # Auto-enable Xbox mode if controller name contains Xbox
+        if not xbox_mode and ("Xbox" in joystick.get_name() or 
+                              "X-Box" in joystick.get_name() or 
+                              "Microsoft" in joystick.get_name()):
+            xbox_mode = True
+            print(f"[INFO] Xbox controller detected, enabling Xbox mode")
+
+        if xbox_mode:
+            # Xbox controller specific mapping
+            # Left stick for steering (axis 0)
+            steering_axis = joystick.get_axis(0)
+            
+            # Get number of axes to help detect controller type
+            num_axes = joystick.get_numaxes()
+            
+            # Check if controller is Xbox-like based on axis count and naming
+            is_xbox_controller = ("Xbox" in joystick.get_name() or 
+                                 "X-Box" in joystick.get_name() or 
+                                 "Microsoft" in joystick.get_name() or
+                                 num_axes >= 5)
+                
+            if is_xbox_controller:
                 try:
-                    accel_axis = joystick.get_axis(4)  # Alternative right stick vertical index
+                    # Try different trigger axis mappings (they differ between controllers and platforms)
+                    if num_axes >= 5:
+                        # Standard Xbox controller mapping
+                        # RT (right trigger) is axis 5 on Windows, sometimes axis 4 on Linux
+                        # LT (left trigger) is axis 2 on Windows, sometimes axis 5 on Linux
+                        
+                        # First try standard Windows mapping
+                        try:
+                            right_trigger = (joystick.get_axis(5) + 1) / 2  # RT: Convert [-1,1] to [0,1]
+                            left_trigger = (joystick.get_axis(2) + 1) / 2   # LT: Convert [-1,1] to [0,1]
+                        except (pygame.error, IndexError):
+                            # Try alternative Linux mapping
+                            try:
+                                right_trigger = (joystick.get_axis(4) + 1) / 2  # RT
+                                left_trigger = (joystick.get_axis(5) + 1) / 2   # LT
+                            except (pygame.error, IndexError):
+                                # Universal fallback - check all possible axes
+                                right_trigger = 0
+                                left_trigger = 0
+                                for i in range(min(num_axes, 6)):
+                                    axis_value = joystick.get_axis(i)
+                                    if i not in [0, 1]:  # Skip left stick axes
+                                        # Use any axis that's being pressed
+                                        if axis_value > 0.5:  # Positive is likely RT
+                                            right_trigger = (axis_value + 1) / 2
+                                        elif axis_value < -0.5:  # Negative could be LT
+                                            left_trigger = (-axis_value + 1) / 2
+                    else:
+                        # Fallback for controllers with fewer axes
+                        right_trigger = max(0, -joystick.get_axis(1))  # Use right stick Y-axis
+                        left_trigger = max(0, joystick.get_axis(1))   # Use right stick Y-axis
+                        
+                    # Combined acceleration value
+                    accel_axis = right_trigger - left_trigger
+                    
                 except (pygame.error, IndexError):
-                    # Fall back to left stick if right stick not available
-                    accel_axis = joystick.get_axis(1)
-                    print("[WARNING] Right stick not detected, falling back to left stick")
+                    # Ultimate fallback if all else fails
+                    accel_axis = -joystick.get_axis(1)  # Use left stick vertical as fallback
+            else:
+                # Non-Xbox controller fallback
+                accel_axis = -joystick.get_axis(1)  # Use left stick vertical as fallback
+        else:
+            # Standard mode: left stick horizontal for steering
+            steering_axis = joystick.get_axis(0)
+            
+            if single_stick_mode:
+                # Original mode: left stick vertical for acceleration
+                accel_axis = joystick.get_axis(1)
+            else:
+                # Dual stick mode: right stick vertical for acceleration
+                # Typically right stick vertical is axis 3 or 4 depending on the controller
+                try:
+                    accel_axis = joystick.get_axis(3)  # Try common right stick vertical index
+                except (pygame.error, IndexError):
+                    try:
+                        accel_axis = joystick.get_axis(4)  # Alternative right stick vertical index
+                    except (pygame.error, IndexError):
+                        # Fall back to left stick if right stick not available
+                        accel_axis = joystick.get_axis(1)
+                        print("[WARNING] Right stick not detected, falling back to left stick")
     except (pygame.error, IndexError):
         print("[ERROR] Unable to read joystick axes")
         return 0.0, 0.0
@@ -343,8 +423,13 @@ def get_joystick_input(joystick):
 
     # Apply calibration
     steering = joystick_calibration.apply_calibration(steering_axis, "steering")
-    # Inversion so up = forward
-    accel = -joystick_calibration.apply_calibration(accel_axis, "acceleration")
+    
+    if xbox_mode:
+        # In Xbox mode, accel_axis is already in correct range
+        accel = accel_axis
+    else:
+        # Inversion so up = forward for standard mode
+        accel = -joystick_calibration.apply_calibration(accel_axis, "acceleration")
 
     return steering, accel
 
@@ -439,7 +524,7 @@ def parse_user_input(joystick=None):
     Returns:
         tuple: (steering, acceleration) - Values between -1.0 and 1.0
     """
-    global wheel_mode, show_input_selector, steering_device, acceleration_device
+    global wheel_mode, show_input_selector, steering_device, acceleration_device, xbox_mode
     
     # Check if we need to show the input selector
     if show_input_selector:

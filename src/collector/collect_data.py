@@ -241,6 +241,20 @@ def display_state_info(frame_count, steering, accel, speed, obs_steering,
         print("\n[INFO] Simulation state:")
         print(f"  User inputs: steering={steering:.2f}, "
               f"acceleration={accel:.2f}")
+        
+        # Add controller mode info
+        from utils_collector import xbox_mode, single_stick_mode, wheel_mode
+        mode_info = []
+        if xbox_mode:
+            mode_info.append("Xbox mode")
+        if single_stick_mode:
+            mode_info.append("Single stick")
+        if wheel_mode:
+            mode_info.append("Wheel mode")
+        
+        if mode_info:
+            print(f"  Control mode: {', '.join(mode_info)}")
+            
         print(f"  Observations:")
         print(f"    Speed: {speed:.2f}")
         print(f"    Car steering: {obs_steering:.2f}")
@@ -270,6 +284,7 @@ def collect_data_loop(env, behavior_name, output_file, joystick):
         print("[INFO] Data collection in progress. Press Ctrl+C to stop.")
         print("[INFO] Controls: Arrow keys or WASD/ZQSD")
         print("[INFO] Press 'c' to calibrate joystick")
+        print("[INFO] Press X on Xbox controller to toggle Xbox mode")
 
         print("\n[INFO] Observation structure details:")
         for i, obs in enumerate(decision_steps.obs):
