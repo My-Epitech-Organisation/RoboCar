@@ -172,6 +172,7 @@ def check_model_compatibility(model_input_size, num_rays):
     return True
 
 
+
 class AdvancedSteeringController:
     """
     Contrôleur de direction avancé avec:
