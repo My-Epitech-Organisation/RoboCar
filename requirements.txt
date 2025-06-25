@@ -1,15 +1,23 @@
-# Basic dependencies
+# RoboCar MLP Dependencies
+# Core ML and data processing
 numpy>=1.19.0
 pandas>=1.1.0
 scikit-learn>=0.23.0
 torch>=1.7.0
+torchvision>=0.8.0
 
-# UI and visualization
+# Visualization
 matplotlib>=3.3.0
-pygame>=2.0.0
 
 # Unity ML-Agents integration
 mlagents>=1.1.0
 
-# Input handling
+# Input handling for data collection
 pynput>=1.7.0
+
+# Optional: For advanced quantization (Jetson Nano)
+# tensorrt>=8.0.0  # Uncomment for Jetson deployment
+
+# Development and debugging
+# jupyter>=1.0.0  # Uncomment for notebook development
+# seaborn>=0.11.0  # Uncomment for advanced plotting

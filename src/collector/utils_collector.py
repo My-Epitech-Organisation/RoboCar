@@ -21,6 +21,7 @@ key_states = {
     'd': False,
     'z': False,
     's': False,
+    'p': False,  # For recording toggle
     'c': False,  # For calibration
     'v': False,  # For wheel mode toggle
     'i': False   # For input selector

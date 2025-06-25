@@ -35,6 +35,11 @@ def parse_arguments():
         action='store_true',
         help='Launch joystick calibration at startup'
     )
+    parser.add_argument(
+        '--session_name',
+        type=str,
+        help='Name for the data collection session (optional)'
+    )
     return parser.parse_args()
 
 
@@ -169,7 +174,7 @@ def get_num_rays_from_config(project_root):
     return num_rays
 
 
-def setup_data_collection(env, project_root):
+def setup_data_collection(env, project_root, session_name=None):
     """Configure structures for data collection."""
     behavior_name = list(env.behavior_specs.keys())[0]
     print(f"[INFO] Detected behavior: {behavior_name}")
@@ -192,7 +197,13 @@ def setup_data_collection(env, project_root):
 
     output_dir = os.path.join(project_root, "data", "raw")
     os.makedirs(output_dir, exist_ok=True)
-    output_file = os.path.join(output_dir, f"session_{int(time.time())}.csv")
+    
+    # Générer le nom de fichier selon le session_name fourni
+    if session_name:
+        output_file = os.path.join(output_dir, f"{session_name}.csv")
+    else:
+        output_file = os.path.join(output_dir, f"session_{int(time.time())}.csv")
+    
     print(f"[INFO] Writing data to {output_file}")
 
     return behavior_name, behavior_spec, output_file, num_rays
@@ -235,10 +246,12 @@ def process_observations(obs_array, num_rays):
 
 
 def display_state_info(frame_count, steering, accel, speed, obs_steering,
-                       position_x, position_y, position_z, raycasts):
+                       position_x, position_y, position_z, raycasts, recording_enabled=False):
     """Display current simulation state periodically."""
     if frame_count % 10 == 0:
-        print("\n[INFO] Simulation state:")
+        # Affichage du statut d'enregistrement
+        record_status = "🟢 RECORDING" if recording_enabled else "🔴 PAUSED"
+        print(f"\n[INFO] Simulation state: {record_status}")
         print(f"  User inputs: steering={steering:.2f}, "
               f"acceleration={accel:.2f}")
         
@@ -284,6 +297,7 @@ def collect_data_loop(env, behavior_name, output_file, joystick):
         print("[INFO] Data collection in progress. Press Ctrl+C to stop.")
         print("[INFO] Controls: Arrow keys or WASD/ZQSD")
         print("[INFO] Press 'c' to calibrate joystick")
+        print("[INFO] Press 'p' to toggle recording ON/OFF (starts OFF)")
         print("[INFO] Press X on Xbox controller to toggle Xbox mode")
 
         print("\n[INFO] Observation structure details:")
@@ -297,6 +311,13 @@ def collect_data_loop(env, behavior_name, output_file, joystick):
         calibration_requested = False
         post_calibration = False
         post_calibration_counter = 0
+        
+        # Variables pour l'enregistrement avec toggle
+        recording_enabled = False  # Enregistrement désactivé par défaut
+        p_key_pressed = False  # Pour détecter le toggle de la touche P
+        
+        print("[INFO] Enregistrement désactivé par défaut. Appuyez sur 'P' pour activer/désactiver.")
+        print("[INFO] Status: 🔴 ENREGISTREMENT ARRÊTÉ")
 
         while True:
             if not pygame.get_init():
@@ -315,6 +336,18 @@ def collect_data_loop(env, behavior_name, output_file, joystick):
 
             if not key_states['c']:
                 calibration_requested = False
+
+            # Handle recording toggle with 'P' key
+            if key_states['p'] and not p_key_pressed:
+                p_key_pressed = True
+                recording_enabled = not recording_enabled
+                if recording_enabled:
+                    print("\n[RECORDING] 🟢 ENREGISTREMENT ACTIVÉ - Collecte des données en cours...")
+                else:
+                    print("\n[RECORDING] 🔴 ENREGISTREMENT ARRÊTÉ - Données non sauvegardées")
+
+            if not key_states['p']:
+                p_key_pressed = False
 
             # Post-calibration stabilization period
             if post_calibration:
@@ -338,21 +371,23 @@ def collect_data_loop(env, behavior_name, output_file, joystick):
             frame_count += 1
             display_state_info(
                 frame_count, steering, accel, speed, obs_steering,
-                position_x, position_y, position_z, raycasts
+                position_x, position_y, position_z, raycasts, recording_enabled
             )
 
-            # Record data
-            writer.writerow({
-                "timestamp": time.time(),
-                "steering_input": steering,
-                "acceleration_input": accel,
-                "raycasts": str(raycasts),
-                "speed": speed,
-                "steering": obs_steering,
-                "position_x": position_x,
-                "position_y": position_y,
-                "position_z": position_z
-            })
+            # Record data - FILTRE: Exclure les données où la vitesse est 0 ET vérifier si l'enregistrement est activé
+            if recording_enabled and speed > 0.0:  # Sauvegarder seulement si enregistrement activé et voiture en mouvement
+                writer.writerow({
+                    "timestamp": time.time(),
+                    "steering_input": steering,
+                    "acceleration_input": accel,
+                    "raycasts": str(raycasts),
+                    "speed": speed,
+                    "steering": obs_steering,
+                    "position_x": position_x,
+                    "position_y": position_y,
+                    "position_z": position_z
+                })
+            # Sinon, ignorer silencieusement (soit speed = 0, soit enregistrement désactivé)
 
             # Send actions to simulation
             continuous_actions = np.array([[accel, steering]], dtype=np.float32)
@@ -403,7 +438,7 @@ def main():
         try:
             # Configure data collection
             behavior_name, _, output_file, num_rays = setup_data_collection(
-                env, project_root
+                env, project_root, args.session_name
             )
 
             try:
