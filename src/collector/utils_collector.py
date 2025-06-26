@@ -541,18 +541,24 @@ def parse_user_input(joystick=None):
     if steering_device or acceleration_device:
         steering = get_device_input(steering_device, "steering")
         acceleration = get_device_input(acceleration_device, "acceleration")
-        return steering, acceleration
-    
-    # Default behavior if no custom configuration
-    steering, acceleration = get_keyboard_input()
+    else:
+        # Default behavior if no custom configuration
+        steering, acceleration = get_keyboard_input()
 
-    # If joystick available and keyboard not used
-    if joystick is not None and steering == 0.0 and acceleration == 0.0:
-        if wheel_mode:
-            # Use wheel and pedals mode
-            steering, acceleration = get_wheel_pedals_input(joystick)
-        else:
-            # Use standard joystick controls
-            steering, acceleration = get_joystick_input(joystick)
+        # If joystick available and keyboard not used
+        if joystick is not None and steering == 0.0 and acceleration == 0.0:
+            if wheel_mode:
+                # Use wheel and pedals mode
+                steering, acceleration = get_wheel_pedals_input(joystick)
+            else:
+                # Use standard joystick controls
+                steering, acceleration = get_joystick_input(joystick)
+
+    # Limit acceleration to maximum of 0.5 for manual control
+    MAX_ACCELERATION = 0.5
+    if acceleration > 0:
+        acceleration = min(acceleration, MAX_ACCELERATION)
+    else:
+        acceleration = max(acceleration, -MAX_ACCELERATION)
 
     return steering, acceleration
